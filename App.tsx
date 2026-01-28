@@ -42,6 +42,10 @@ const App: React.FC = () => {
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const callListenersRef = useRef<(() => void)[]>([]);
+  
+  // PWA Install Prompt State
+  const [installPrompt, setInstallPrompt] = useState<any>(null);
+
 
   const cleanupWebRTC = useCallback(() => {
     endCall(peerConnectionRef, localStream, activeCall, user, db);
@@ -131,6 +135,22 @@ const App: React.FC = () => {
       setupNotifications(profile.uid);
     }
   }, [profile]);
+  
+  // Listen for PWA install prompt
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: Event) => {
+      // Prevent the mini-infobar from appearing on mobile
+      e.preventDefault();
+      // Stash the event so it can be triggered later.
+      setInstallPrompt(e);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
 
 
   // Listen for incoming calls
@@ -242,6 +262,18 @@ const App: React.FC = () => {
     setSelectedUserForAdminView(userToView);
     setView('adminChatViewer');
   };
+  
+  const handleInstallClick = () => {
+    if (!installPrompt) {
+      return;
+    }
+    // Show the browser's installation prompt
+    installPrompt.prompt();
+    // Wait for the user to respond and then clear the prompt
+    installPrompt.userChoice.then(() => {
+      setInstallPrompt(null);
+    });
+  };
 
   const renderContent = () => {
     if (isLoading) {
@@ -282,6 +314,8 @@ const App: React.FC = () => {
           incomingCall={incomingCall}
           onAcceptCall={handleAcceptCall}
           onRejectCall={handleRejectCall}
+          installPrompt={installPrompt}
+          onInstallClick={handleInstallClick}
         />
       );
     }
