@@ -5,7 +5,7 @@ import firebase from 'firebase/compat/app';
 import { db } from '../services/firebase';
 import type { UserProfile, Contact, Message } from '../types';
 import { BackIcon, PhoneIcon, VideoIcon, SendIcon, MoreIcon, CheckIcon, PencilIcon, CancelIcon, ReplyIcon } from './Icons';
-import { formatPresenceTimestamp } from '../utils/format';
+import { formatPresenceTimestamp, formatDateLabel } from '../utils/format';
 import Avatar from './Avatar';
 
 interface ChatScreenProps {
@@ -431,6 +431,47 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ user, profile, partner, onBack,
     }
     return null;
   };
+  
+  const renderMessagesWithDate = () => {
+    const messageGroups: { [key: string]: Message[] } = {};
+
+    messages.forEach(msg => {
+      const date = new Date(msg.ts);
+      const dateKey = new Date(date.getFullYear(), date.getMonth(), date.getDate()).toISOString();
+      if (!messageGroups[dateKey]) {
+        messageGroups[dateKey] = [];
+      }
+      messageGroups[dateKey].push(msg);
+    });
+
+    const sortedGroupKeys = Object.keys(messageGroups).sort();
+
+    return sortedGroupKeys.map(dateKey => {
+      const groupMessages = messageGroups[dateKey];
+      const firstMessageTimestamp = groupMessages[0].ts;
+      const dateLabel = formatDateLabel(firstMessageTimestamp);
+
+      return (
+        <React.Fragment key={dateKey}>
+          <div className="flex justify-center my-2">
+            <span className="bg-gray-300 dark:bg-gray-600 text-xs text-gray-700 dark:text-gray-200 px-2 py-1 rounded-full">
+              {dateLabel}
+            </span>
+          </div>
+          {groupMessages.map(msg => (
+            <MessageBubble
+              key={msg.id}
+              msg={msg}
+              isOwnMessage={msg.from === user.uid}
+              onStartEdit={handleStartEdit}
+              onStartReply={handleStartReply}
+              onScrollToMessage={handleScrollToMessage}
+            />
+          ))}
+        </React.Fragment>
+      );
+    });
+  };
 
   return (
     <div className="flex flex-col h-full bg-gray-200 dark:bg-gray-800">
@@ -459,16 +500,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ user, profile, partner, onBack,
       </header>
       
       <main className="flex-1 overflow-y-auto p-4 space-y-2 chat-message-list">
-        {messages.map((msg) => (
-          <MessageBubble
-            key={msg.id}
-            msg={msg}
-            isOwnMessage={msg.from === user.uid}
-            onStartEdit={handleStartEdit}
-            onStartReply={handleStartReply}
-            onScrollToMessage={handleScrollToMessage}
-          />
-        ))}
+        {renderMessagesWithDate()}
         <div 
             className={`transition-all duration-300 ease-in-out transform ${isPartnerTyping ? 'opacity-100 translate-y-0 max-h-20' : 'opacity-0 -translate-y-2 max-h-0'}`}
             style={{ overflow: 'hidden' }}
