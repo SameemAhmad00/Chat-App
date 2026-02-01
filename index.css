@@ -1,4 +1,4 @@
-      body {
+   body {
         font-family: 'Roboto', sans-serif;
       }
 
@@ -76,4 +76,13 @@
 
       .animate-incoming-message {
         animation: incomingMessageAnimation 0.3s ease-out forwards;
+      }
+
+      /* Utility for hiding scrollbar during screenshot capture */
+      .hide-scrollbar-for-capture::-webkit-scrollbar {
+        display: none;
+      }
+      .hide-scrollbar-for-capture {
+        -ms-overflow-style: none;  /* IE and Edge */
+        scrollbar-width: none;  /* Firefox */
       }
