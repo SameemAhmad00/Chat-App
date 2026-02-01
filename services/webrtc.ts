@@ -29,14 +29,11 @@ export const startOutgoingCall = async (
     );
     setLocalStream(stream);
 
-    // FIX: Use compat version of ref and push.
     const callId = db.ref(`calls/${partner.uid}`).push().key;
     if (!callId) throw new Error("Failed to create call ID");
     
-    // Log call for both users
-    // FIX: Use compat version of serverTimestamp.
+    // Log the outgoing call for the current user ONLY.
     const callTimestamp = firebase.database.ServerValue.TIMESTAMP;
-    // FIX: Use compat version of ref, push and set.
     const callerLogRef = db.ref(`callLogs/${user.uid}`).push();
     callerLogRef.set({
         partner: { uid: partner.uid, username: partner.username, photoURL: partner.photoURL || null },
@@ -44,15 +41,6 @@ export const startOutgoingCall = async (
         direction: 'outgoing',
         ts: callTimestamp,
     });
-    // FIX: Use compat version of ref, push and set.
-    const calleeLogRef = db.ref(`callLogs/${partner.uid}`).push();
-    calleeLogRef.set({
-        partner: { uid: user.uid, username: profile.username, photoURL: profile.photoURL || null },
-        type,
-        direction: 'incoming',
-        ts: callTimestamp,
-    });
-
 
     const newActiveCall: ActiveCall = { id: callId, partner, type, role: 'caller', status: 'connecting' };
     setActiveCall(newActiveCall);
@@ -71,12 +59,10 @@ export const startOutgoingCall = async (
       type,
       from: user.uid,
       fromUsername: profile.username,
-      fromPhotoURL: profile.photoURL,
+      fromPhotoURL: profile.photoURL || null,
       offer,
-      // FIX: Use compat version of serverTimestamp.
       ts: firebase.database.ServerValue.TIMESTAMP as any,
     };
-    // FIX: Use compat version of ref and set.
     await db.ref(`calls/${partner.uid}/${callId}`).set(callPayload);
     
     return setupCallListeners(callId, newActiveCall, db, pcRef);
@@ -107,12 +93,21 @@ export const acceptIncomingCall = async (
 
     const newActiveCall: ActiveCall = { 
       id: incomingCall.id, 
-      partner: { uid: incomingCall.from, username: incomingCall.fromUsername, photoURL: incomingCall.fromPhotoURL },
+      partner: { uid: incomingCall.from, username: incomingCall.fromUsername, photoURL: incomingCall.fromPhotoURL || null },
       type: incomingCall.type, 
       role: 'callee', 
       status: 'connecting' 
     };
     setActiveCall(newActiveCall);
+
+    // Log the incoming call for the current user upon accepting.
+    const callTimestamp = firebase.database.ServerValue.TIMESTAMP;
+    db.ref(`callLogs/${user.uid}`).push().set({
+        partner: { uid: incomingCall.from, username: incomingCall.fromUsername, photoURL: incomingCall.fromPhotoURL || null },
+        type: incomingCall.type,
+        direction: 'incoming',
+        ts: callTimestamp,
+    });
 
     pcRef.current = new RTCPeerConnection(rtcConfig);
     stream.getTracks().forEach(track => pcRef.current?.addTrack(track, stream));
@@ -125,7 +120,6 @@ export const acceptIncomingCall = async (
     const answer = await pcRef.current.createAnswer();
     await pcRef.current.setLocalDescription(answer);
 
-    // FIX: Use compat version of ref and set.
     await db.ref(`calls/${user.uid}/${incomingCall.id}/answer`).set(answer);
 
     return setupCallListeners(incomingCall.id, newActiveCall, db, pcRef);
@@ -148,19 +142,15 @@ export const setupCallListeners = (
 
   const unsubscribers: (() => void)[] = [];
 
-  // FIX: Use compat version of ref.
   const iceCandidateRef = db.ref(`iceCandidates/${callId}/${activeCall.role}`);
   pc.onicecandidate = event => {
     if (event.candidate) {
-      // FIX: Use compat version of push.
       iceCandidateRef.push(event.candidate.toJSON());
     }
   };
   
   const remoteRole = activeCall.role === 'caller' ? 'callee' : 'caller';
-  // FIX: Use compat version of ref.
   const remoteIceCandidateRef = db.ref(`iceCandidates/${callId}/${remoteRole}`);
-  // FIX: Use compat version of onChildAdded.
   const iceCallback = (snapshot: firebase.database.DataSnapshot) => {
     if (snapshot.exists()) {
       pc.addIceCandidate(new RTCIceCandidate(snapshot.val())).catch(e => console.error("Error adding ICE candidate:", e));
@@ -170,9 +160,7 @@ export const setupCallListeners = (
   unsubscribers.push(() => remoteIceCandidateRef.off('child_added', iceCallback));
 
   if (activeCall.role === 'caller') {
-    // FIX: Use compat version of ref.
     const answerRef = db.ref(`calls/${activeCall.partner.uid}/${callId}/answer`);
-    // FIX: Use compat version of onValue.
     const answerCallback = async (snapshot: firebase.database.DataSnapshot) => {
       if (snapshot.exists()) {
         const answer = snapshot.val();
@@ -202,10 +190,8 @@ export const endCall = (
   if (activeCall && user) {
     const callRefPath = activeCall.role === 'caller' 
       ? `calls/${activeCall.partner.uid}/${activeCall.id}`
-      // Callee is listening on their own UID for calls
       : `calls/${user.uid}/${activeCall.id}`;
       
-    // FIX: Use compat version of ref and remove.
     db.ref(callRefPath).remove();
     db.ref(`iceCandidates/${activeCall.id}`).remove();
   }

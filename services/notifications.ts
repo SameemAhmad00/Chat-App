@@ -33,8 +33,11 @@ export const setupNotifications = async (uid: string) => {
     if (permission === 'granted') {
       console.log('Notification permission granted.');
 
-      // FIX: Use compat version of getToken.
-      const currentToken = await messaging.getToken({ vapidKey: VAPID_KEY });
+      // Get the service worker registration that is already active.
+      const registration = await navigator.serviceWorker.ready;
+
+      // FIX: Use compat version of getToken and pass the existing registration.
+      const currentToken = await messaging.getToken({ vapidKey: VAPID_KEY, serviceWorkerRegistration: registration });
       if (currentToken) {
         // Save the token to the user's profile in the Realtime Database
         // FIX: Use compat version of ref and set.

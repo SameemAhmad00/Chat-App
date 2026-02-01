@@ -4,9 +4,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import firebase from 'firebase/compat/app';
 import { db } from '../services/firebase';
 import type { UserProfile, Contact, Message } from '../types';
-import { BackIcon, PhoneIcon, VideoIcon, SendIcon, MoreIcon, CheckIcon, PencilIcon, CancelIcon, ReplyIcon } from './Icons';
+import { BackIcon, PhoneIcon, VideoIcon, SendIcon, MoreIcon, CheckIcon, PencilIcon, CancelIcon, ReplyIcon, CameraIcon } from './Icons';
 import { formatPresenceTimestamp } from '../utils/format';
 import Avatar from './Avatar';
+import { useTheme } from '../contexts/ThemeContext';
+
+// Make html2canvas available from the global scope where it's loaded via script tag
+declare const html2canvas: any;
 
 interface ChatScreenProps {
   // FIX: Use User type from firebase compat library.
@@ -201,11 +205,15 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ user, profile, partner, onBack,
   const [editingMessage, setEditingMessage] = useState<Message | null>(null);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [isMenuOpen, setMenuOpen] = useState(false);
   const [isPartnerTyping, setIsPartnerTyping] = useState(false);
   const [partnerPresence, setPartnerPresence] = useState<'online' | number | null>(null);
   const typingTimeoutRef = useRef<any>(null);
+  const [isCapturing, setIsCapturing] = useState(false);
+  const [captureStatus, setCaptureStatus] = useState('');
+  const { theme } = useTheme();
   
   const chatId = [user.uid, partner.uid].sort().join('_');
   // FIX: Use compat version of ref.
@@ -419,6 +427,93 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ user, profile, partner, onBack,
     setMenuOpen(false);
   };
 
+  const handleCaptureChat = async () => {
+    const chatContainer = chatContainerRef.current;
+    if (!chatContainer) {
+      alert("Could not find chat container to capture.");
+      return;
+    }
+    setMenuOpen(false);
+    setIsCapturing(true);
+
+    // Store original state to restore later
+    const originalMessages = messages;
+    const originalScrollTop = chatContainer.scrollTop;
+    const originalHeight = chatContainer.style.height;
+    const originalOverflow = chatContainer.style.overflow;
+
+    try {
+      setCaptureStatus('Loading full conversation...');
+      // 1. Fetch the entire conversation history without server-side ordering
+      const allMessagesRef = db.ref(`messages/${chatId}`);
+      const snapshot = await allMessagesRef.get();
+      const data = snapshot.val() || {};
+      // 2. Map to an array and sort on the client-side to avoid indexing errors
+      const allMessagesList: Message[] = Object.keys(data)
+        .map(key => ({ ...data[key], id: key } as Message))
+        .sort((a, b) => a.ts - b.ts);
+
+      // 3. Temporarily update the state to render all messages
+      setMessages(allMessagesList);
+
+      // 4. Wait for React to render the full list
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // 5. Prepare container for capture
+      chatContainer.classList.add('hide-scrollbar-for-capture');
+      chatContainer.style.height = 'auto';
+      chatContainer.style.overflow = 'visible';
+      chatContainer.scrollTop = 0;
+
+      const exportHeader = document.createElement('div');
+      exportHeader.className = 'p-4 bg-gray-200 dark:bg-gray-800 text-gray-800 dark:text-gray-100 flex flex-col items-center border-b-2 border-gray-300 dark:border-gray-700 pb-4 mb-4';
+      exportHeader.innerHTML = `
+          <h2 class="text-xl font-bold">${partner.username}</h2>
+          <p class="text-sm text-gray-500 dark:text-gray-400">Chat History</p>
+          <p class="text-xs text-gray-400 dark:text-gray-300 mt-1">Exported on ${new Date().toLocaleString()}</p>
+      `;
+      chatContainer.prepend(exportHeader);
+
+      setCaptureStatus('Generating high-quality image...');
+      // 6. Perform the capture
+      const canvas = await html2canvas(chatContainer, {
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: theme === 'dark' ? '#1f2937' : '#e5e7eb',
+        scale: window.devicePixelRatio,
+      });
+
+      setCaptureStatus('Preparing download...');
+      // 7. Trigger download
+      const link = document.createElement('a');
+      link.download = `sameem-chat-with-${partner.username}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // 8. Restore styles immediately after capture to prevent visual glitches
+      exportHeader.remove();
+      chatContainer.style.height = originalHeight;
+      chatContainer.style.overflow = originalOverflow;
+      chatContainer.classList.remove('hide-scrollbar-for-capture');
+      
+    } catch (error) {
+      console.error("Failed to capture chat:", error);
+      alert("Sorry, something went wrong while capturing the chat.");
+    } finally {
+      // 9. Restore original messages and scroll position
+      setMessages(originalMessages);
+      setTimeout(() => {
+        if (chatContainerRef.current) {
+          chatContainerRef.current.scrollTop = originalScrollTop;
+        }
+      }, 0);
+      setIsCapturing(false);
+      setCaptureStatus('');
+    }
+  };
+
+
   const renderPresenceHeader = () => {
     if (isPartnerTyping) {
       return <p className="text-sm text-green-500 dark:text-green-400">typing...</p>;
@@ -433,8 +528,8 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ user, profile, partner, onBack,
   };
 
   return (
-    <div className="flex flex-col h-full bg-gray-200 dark:bg-gray-800">
-      <header className="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-100 p-3 flex items-center shadow-sm z-10">
+    <div className="flex flex-col h-full bg-gray-200 dark:bg-gray-800 relative">
+      <header className={`bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-100 p-3 flex items-center shadow-sm z-10 ${isCapturing ? 'invisible' : ''}`}>
         <button onClick={onBack} className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full"><BackIcon className="w-6 h-6" /></button>
         <Avatar photoURL={partner.photoURL} username={partner.username} className="w-10 h-10 ml-2" />
         <div className="flex-1 ml-3">
@@ -447,6 +542,10 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ user, profile, partner, onBack,
           <button onClick={() => setMenuOpen(!isMenuOpen)} className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full"><MoreIcon className="w-6 h-6" /></button>
           {isMenuOpen && (
               <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-700 rounded-md shadow-lg py-1 z-20 animation-scale-in origin-top-right">
+                  <button onClick={handleCaptureChat} className="flex items-center w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600">
+                      <CameraIcon className="w-4 h-4 mr-2" />
+                      Long Screenshot
+                  </button>
                   <button onClick={handleBlockUser} className="block w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600">
                       {profile.blocked && profile.blocked[partner.uid] ? 'Unblock User' : 'Block User'}
                   </button>
@@ -458,7 +557,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ user, profile, partner, onBack,
         </div>
       </header>
       
-      <main className="flex-1 overflow-y-auto p-4 space-y-2 chat-message-list">
+      <main ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-2 chat-message-list">
         {messages.map((msg) => (
           <MessageBubble
             key={msg.id}
@@ -484,7 +583,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ user, profile, partner, onBack,
         <div ref={messagesEndRef} />
       </main>
 
-      <div className={`bg-gray-100 dark:bg-gray-900 p-3 border-t border-gray-200 dark:border-gray-700 transition-all duration-200`}>
+      <div className={`bg-gray-100 dark:bg-gray-900 p-3 border-t border-gray-200 dark:border-gray-700 transition-all duration-200 ${isCapturing ? 'invisible' : ''}`}>
         {replyingTo && (
             <div className="flex justify-between items-center text-sm px-1 pb-2">
                 <div className="flex-1 flex items-center overflow-hidden border-l-4 border-green-500 dark:border-green-400 pl-3">
@@ -527,6 +626,13 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ user, profile, partner, onBack,
           </button>
         </form>
       </div>
+      
+      {isCapturing && (
+        <div className="absolute inset-0 bg-black bg-opacity-60 flex flex-col items-center justify-center z-50 animation-fade-in">
+          <div className="w-8 h-8 border-4 border-t-transparent border-white rounded-full animate-spin"></div>
+          <p className="text-white mt-4 text-lg">{captureStatus || 'Preparing capture...'}</p>
+        </div>
+      )}
     </div>
   );
 };
