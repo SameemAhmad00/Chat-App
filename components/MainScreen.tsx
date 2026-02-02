@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 // FIX: Use firebase v9 compat imports to resolve module errors.
 import firebase from 'firebase/compat/app';
 import { auth, db, storage } from '../services/firebase';
@@ -8,15 +8,14 @@ import { MenuIcon, ChatIcon, CogIcon, ArrowUpRightIcon, ArrowDownLeftIcon, Video
 import { formatPresenceTimestamp, formatTimestamp, formatCallDuration } from '../utils/format';
 import Avatar from './Avatar';
 import { useTheme } from '../contexts/ThemeContext';
+import type { NavigationState } from '../App';
 
 interface MainScreenProps {
   // FIX: Use User type from firebase compat library.
   user: firebase.User;
   profile: UserProfile;
-  onSelectChat: (partner: Contact) => void;
+  onNavigate: (state: NavigationState) => void;
   onStartCall: (partner: Contact, type: 'video' | 'voice') => void;
-  onNavigateToSettings: () => void;
-  onNavigateToAdmin: () => void;
   incomingCall: Call | null;
   onAcceptCall: () => void;
   onRejectCall: () => void;
@@ -26,7 +25,7 @@ interface MainScreenProps {
 
 type Tab = 'chats' | 'requests' | 'calls';
 
-const MainScreen: React.FC<MainScreenProps> = ({ user, profile, onSelectChat, onStartCall, onNavigateToSettings, onNavigateToAdmin, incomingCall, onAcceptCall, onRejectCall, installPrompt, onInstallClick }) => {
+const MainScreen: React.FC<MainScreenProps> = ({ user, profile, onNavigate, onStartCall, incomingCall, onAcceptCall, onRejectCall, installPrompt, onInstallClick }) => {
   const [activeTab, setActiveTab] = useState<Tab>('chats');
   const [contacts, setContacts] = useState<EnrichedContact[]>([]);
   const [requests, setRequests] = useState<FriendRequest[]>([]);
@@ -122,7 +121,7 @@ const MainScreen: React.FC<MainScreenProps> = ({ user, profile, onSelectChat, on
   const renderTabContent = () => {
     switch (activeTab) {
       case 'chats':
-        return <ChatList contacts={contacts} onSelectChat={onSelectChat} />;
+        return <ChatList contacts={contacts} onSelectChat={(partner) => onNavigate({ view: 'chat', partner })} />;
       case 'requests':
         return <RequestList requests={requests} user={user} profile={profile} />;
       case 'calls':
@@ -140,10 +139,10 @@ const MainScreen: React.FC<MainScreenProps> = ({ user, profile, onSelectChat, on
       <header className="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 p-4 flex justify-between items-center shadow-sm">
         <h1 className="text-xl font-bold text-green-600 dark:text-green-400">Sameem Chat</h1>
         <div>
-          <button onClick={() => setProfileModalOpen(true)} className="p-2 text-gray-600 dark:text-gray-400 hover:text-green-600 dark:hover:text-green-400 rounded-full"><MenuIcon className="w-6 h-6" /></button>
+          <button onClick={() => setProfileModalOpen(true)} className="p-2 text-gray-600 dark:text-gray-400 hover:text-green-600 dark:hover:text-green-400 rounded-full" aria-label="Open profile menu"><MenuIcon className="w-6 h-6" /></button>
         </div>
       </header>
-      <nav className="relative flex bg-gray-100 dark:bg-gray-900 text-gray-600 dark:text-gray-400 shadow-sm">
+      <nav role="tablist" aria-label="Main navigation" className="relative flex bg-gray-100 dark:bg-gray-900 shadow-sm">
         <TabButton title="CHATS" isActive={activeTab === 'chats'} onClick={() => setActiveTab('chats')} badgeCount={0} />
         <TabButton title="REQUESTS" isActive={activeTab === 'requests'} onClick={() => setActiveTab('requests')} badgeCount={requests.length} />
         <TabButton title="CALLS" isActive={activeTab === 'calls'} onClick={() => setActiveTab('calls')} badgeCount={0} />
@@ -152,7 +151,7 @@ const MainScreen: React.FC<MainScreenProps> = ({ user, profile, onSelectChat, on
             style={{ width: '33.333%', transform: `translateX(${activeTabIndex * 100}%)` }}
         ></div>
       </nav>
-      <main className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-800">
+      <main role="tabpanel" className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-800">
         {renderTabContent()}
       </main>
       
@@ -165,7 +164,7 @@ const MainScreen: React.FC<MainScreenProps> = ({ user, profile, onSelectChat, on
       </button>
 
       {isAddFriendModalOpen && <AddFriendModal profile={profile} onClose={() => setAddFriendModalOpen(false)} />}
-      {isProfileModalOpen && <ProfileModal user={user} profile={profile} onClose={() => setProfileModalOpen(false)} onNavigateToSettings={onNavigateToSettings} onNavigateToAdmin={onNavigateToAdmin} installPrompt={installPrompt} onInstallClick={onInstallClick} />}
+      {isProfileModalOpen && <ProfileModal user={user} profile={profile} onClose={() => setProfileModalOpen(false)} onNavigate={onNavigate} installPrompt={installPrompt} onInstallClick={onInstallClick} />}
       {incomingCall && <IncomingCallModal call={incomingCall} onAccept={onAcceptCall} onReject={onRejectCall} />}
       {selectedCallLog && <CallLogDetailModal log={selectedCallLog} onClose={() => setSelectedCallLog(null)} />}
     </div>
@@ -173,7 +172,7 @@ const MainScreen: React.FC<MainScreenProps> = ({ user, profile, onSelectChat, on
 };
 
 const TabButton: React.FC<{title: string, isActive: boolean, onClick: ()=>void, badgeCount: number}> = ({title, isActive, onClick, badgeCount}) => (
-    <button onClick={onClick} className={`flex-1 py-3 text-sm font-bold relative transition-colors z-10 ${isActive ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'}`}>
+    <button role="tab" aria-selected={isActive} onClick={onClick} className={`flex-1 py-3 text-sm font-bold relative transition-colors z-10 ${isActive ? 'text-green-600 dark:text-green-400' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'}`}>
         <div className="flex justify-center items-center">
           {title}
           {badgeCount > 0 && <span className="ml-2 bg-green-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">{badgeCount}</span>}
@@ -205,27 +204,29 @@ const ChatList: React.FC<{contacts: EnrichedContact[], onSelectChat: (p:Contact)
   }
 
   return (
-    <div className="divide-y divide-gray-100 dark:divide-gray-700">
+    <ul className="divide-y divide-gray-100 dark:divide-gray-700">
       {contacts.map((contact) => (
-        <div key={contact.uid} className="flex items-center p-3 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer" onClick={() => onSelectChat(contact)}>
-          <Avatar photoURL={contact.photoURL} username={contact.username} />
-          <div className="flex-1 ml-4 overflow-hidden">
-            <div className="flex justify-between items-center">
-                <p className="font-medium text-gray-800 dark:text-gray-100 truncate">{contact.username}</p>
-                {contact.lastMessage?.ts && <p className={`text-xs ${contact.unreadCount ? 'text-green-500 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'} shrink-0 ml-2`}>{formatTimestamp(contact.lastMessage.ts)}</p>}
-            </div>
-            <div className="flex justify-between items-center mt-1">
-               {renderPresence(contact.presence) || <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{contact.lastMessage?.text || 'No messages yet'}</p>}
-                {contact.unreadCount && contact.unreadCount > 0 ? (
-                    <span className="bg-green-500 text-white text-xs rounded-full h-5 min-w-[20px] px-1 flex items-center justify-center font-bold">
-                        {contact.unreadCount}
-                    </span>
-                ) : null}
+        <li key={contact.uid} className="hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer" onClick={() => onSelectChat(contact)}>
+          <div className="flex items-center p-3">
+            <Avatar photoURL={contact.photoURL} username={contact.username} />
+            <div className="flex-1 ml-4 overflow-hidden">
+              <div className="flex justify-between items-center">
+                  <p className="font-medium text-gray-800 dark:text-gray-100 truncate">{contact.username}</p>
+                  {contact.lastMessage?.ts && <p className={`text-xs ${contact.unreadCount ? 'text-green-500 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'} shrink-0 ml-2`}>{formatTimestamp(contact.lastMessage.ts)}</p>}
+              </div>
+              <div className="flex justify-between items-center mt-1">
+                 {renderPresence(contact.presence) || <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{contact.lastMessage?.text || 'No messages yet'}</p>}
+                  {contact.unreadCount && contact.unreadCount > 0 ? (
+                      <span className="bg-green-500 text-white text-xs rounded-full h-5 min-w-[20px] px-1 flex items-center justify-center font-bold">
+                          {contact.unreadCount}
+                      </span>
+                  ) : null}
+              </div>
             </div>
           </div>
-        </div>
+        </li>
       ))}
-    </div>
+    </ul>
   );
 };
 
@@ -253,9 +254,9 @@ const RequestList: React.FC<{requests: FriendRequest[], user: firebase.User, pro
     }
 
     return (
-        <div className="space-y-2 p-2">
+        <ul className="space-y-2 p-2">
             {requests.map(req => (
-                <div key={req.id} className="flex items-center p-3 bg-white dark:bg-gray-700 rounded-lg shadow-sm">
+                <li key={req.id} className="flex items-center p-3 bg-white dark:bg-gray-700 rounded-lg shadow-sm">
                      <Avatar photoURL={req.fromPhotoURL} username={req.fromUsername} />
                      <div className="flex-1 ml-4">
                         <p className="font-semibold text-gray-800 dark:text-gray-100">{req.fromUsername}</p>
@@ -263,9 +264,9 @@ const RequestList: React.FC<{requests: FriendRequest[], user: firebase.User, pro
                      </div>
                      <button onClick={() => handleAccept(req)} className="bg-green-500 text-white px-3 py-1 rounded-md text-sm font-semibold hover:bg-green-600">Accept</button>
                      <button onClick={() => handleReject(req.id)} className="bg-red-500 text-white px-3 py-1 rounded-md text-sm font-semibold ml-2 hover:bg-red-600">Reject</button>
-                </div>
+                </li>
             ))}
-        </div>
+        </ul>
     );
 };
 
@@ -275,34 +276,36 @@ const CallHistory: React.FC<{ logs: CallRecord[]; onLogClick: (log: CallRecord) 
     }
 
     return (
-        <div className="divide-y divide-gray-100 dark:divide-gray-700">
+        <ul className="divide-y divide-gray-100 dark:divide-gray-700">
             {logs.map(log => (
-                <div key={log.id} className="flex items-center p-3 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer" onClick={() => onLogClick(log)}>
-                    <Avatar photoURL={log.partner.photoURL} username={log.partner.username} />
-                    <div className="flex-1 ml-4 overflow-hidden">
-                        <div className="flex justify-between items-center">
-                            <p className="font-medium text-gray-800 dark:text-gray-100 truncate">{log.partner.username}</p>
-                            <p className="text-xs text-gray-400 dark:text-gray-500 shrink-0 ml-2">{formatTimestamp(log.ts)}</p>
-                        </div>
-                        <div className="flex items-center mt-1">
-                            {log.direction === 'outgoing' ? 
-                                <ArrowUpRightIcon className="w-4 h-4 text-green-500" /> : 
-                                <ArrowDownLeftIcon className="w-4 h-4 text-blue-500" />
-                            }
-                            {log.type === 'video' ?
-                                <VideoIcon className="w-4 h-4 text-gray-500 dark:text-gray-400 ml-2" /> :
-                                <PhoneIcon className="w-4 h-4 text-gray-500 dark:text-gray-400 ml-2" />
-                            }
-                            {log.duration !== undefined && log.duration > 0 && (
-                                <p className="text-xs text-gray-400 dark:text-gray-500 ml-2">
-                                    {formatCallDuration(log.duration)}
-                                </p>
-                            )}
+                <li key={log.id} className="hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer" onClick={() => onLogClick(log)}>
+                    <div className="flex items-center p-3">
+                        <Avatar photoURL={log.partner.photoURL} username={log.partner.username} />
+                        <div className="flex-1 ml-4 overflow-hidden">
+                            <div className="flex justify-between items-center">
+                                <p className="font-medium text-gray-800 dark:text-gray-100 truncate">{log.partner.username}</p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 shrink-0 ml-2">{formatTimestamp(log.ts)}</p>
+                            </div>
+                            <div className="flex items-center mt-1">
+                                {log.direction === 'outgoing' ? 
+                                    <ArrowUpRightIcon className="w-4 h-4 text-green-500" /> : 
+                                    <ArrowDownLeftIcon className="w-4 h-4 text-blue-500" />
+                                }
+                                {log.type === 'video' ?
+                                    <VideoIcon className="w-4 h-4 text-gray-500 dark:text-gray-400 ml-2" /> :
+                                    <PhoneIcon className="w-4 h-4 text-gray-500 dark:text-gray-400 ml-2" />
+                                }
+                                {log.duration !== undefined && log.duration > 0 && (
+                                    <p className="text-xs text-gray-400 dark:text-gray-500 ml-2">
+                                        {formatCallDuration(log.duration)}
+                                    </p>
+                                )}
+                            </div>
                         </div>
                     </div>
-                </div>
+                </li>
             ))}
-        </div>
+        </ul>
     );
 };
 
@@ -352,10 +355,11 @@ const AddFriendModal: React.FC<{profile: UserProfile, onClose: () => void}> = ({
                 value={username} 
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="Enter friend's username"
+                aria-label="Enter friend's username"
                 className="w-full p-2 border-b-2 border-green-500 dark:border-green-400 focus:outline-none bg-transparent dark:text-white"
             />
-            {error && <p className="text-red-500 text-sm mt-2">{error}</p>}
-            {success && <p className="text-green-500 text-sm mt-2">{success}</p>}
+            {error && <p role="alert" className="text-red-500 text-sm mt-2">{error}</p>}
+            {success && <p role="status" className="text-green-500 text-sm mt-2">{success}</p>}
             <div className="mt-4 flex justify-end space-x-2">
                 <button onClick={onClose} className="px-4 py-2 text-green-600 dark:text-green-400 rounded hover:bg-gray-100 dark:hover:bg-gray-700 font-semibold">Cancel</button>
                 <button onClick={handleSendRequest} className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 font-semibold">Send Request</button>
@@ -364,7 +368,7 @@ const AddFriendModal: React.FC<{profile: UserProfile, onClose: () => void}> = ({
     );
 }
 
-const ProfileModal: React.FC<{user: firebase.User, profile: UserProfile, onClose: () => void, onNavigateToSettings: () => void, onNavigateToAdmin: () => void, installPrompt: any, onInstallClick: () => void}> = ({ user, profile, onClose, onNavigateToSettings, onNavigateToAdmin, installPrompt, onInstallClick }) => {
+const ProfileModal: React.FC<{user: firebase.User, profile: UserProfile, onClose: () => void, onNavigate: (state: NavigationState) => void, installPrompt: any, onInstallClick: () => void}> = ({ user, profile, onClose, onNavigate, installPrompt, onInstallClick }) => {
     const [isUploading, setIsUploading] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     const [editedName, setEditedName] = useState(profile.name || '');
@@ -417,12 +421,12 @@ const ProfileModal: React.FC<{user: firebase.User, profile: UserProfile, onClose
                 <div className="relative cursor-pointer" onClick={handleAvatarClick} title="Change profile picture">
                     <Avatar photoURL={profile.photoURL} username={profile.username} className="w-24 h-24 text-4xl" />
                     {isUploading && (
-                        <div className="absolute inset-0 bg-black bg-opacity-50 rounded-full flex items-center justify-center">
+                        <div role="status" aria-label="Uploading image" className="absolute inset-0 bg-black bg-opacity-50 rounded-full flex items-center justify-center">
                             <div className="w-6 h-6 border-4 border-t-transparent border-white rounded-full animate-spin"></div>
                         </div>
                     )}
                 </div>
-                <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="image/*" className="hidden" />
+                <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="image/*" className="hidden" aria-label="Upload profile picture"/>
                 
                 {isEditing ? (
                     <input
@@ -431,6 +435,7 @@ const ProfileModal: React.FC<{user: firebase.User, profile: UserProfile, onClose
                       onChange={(e) => setEditedName(e.target.value)}
                       onBlur={handleUpdateName}
                       onKeyDown={(e) => e.key === 'Enter' && handleUpdateName()}
+                      aria-label="Edit your name"
                       className="mt-4 w-full text-center text-xl font-bold border-b-2 border-green-500 dark:border-green-400 focus:outline-none bg-transparent dark:text-white"
                       autoFocus
                     />
@@ -451,11 +456,11 @@ const ProfileModal: React.FC<{user: firebase.User, profile: UserProfile, onClose
             </div>
             <div className="mt-6 flex justify-between w-full items-center">
                 <div className="flex space-x-1">
-                     <button onClick={() => { onClose(); onNavigateToSettings(); }} className="p-2 text-gray-500 dark:text-gray-400 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700" aria-label="Settings">
+                     <button onClick={() => { onClose(); onNavigate({ view: 'settings' }); }} className="p-2 text-gray-500 dark:text-gray-400 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700" aria-label="Settings">
                         <CogIcon className="w-6 h-6"/>
                      </button>
                      {profile.isAdmin && (
-                        <button onClick={() => { onClose(); onNavigateToAdmin(); }} className="p-2 text-gray-500 dark:text-gray-400 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700" aria-label="Admin Panel">
+                        <button onClick={() => { onClose(); onNavigate({ view: 'admin' }); }} className="p-2 text-gray-500 dark:text-gray-400 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700" aria-label="Admin Panel">
                             <ShieldCheckIcon className="w-6 h-6" />
                         </button>
                      )}
@@ -539,16 +544,63 @@ const CallLogDetailModal: React.FC<{ log: CallRecord, onClose: () => void }> = (
 }
 
 
-const Modal: React.FC<React.PropsWithChildren<{title: string, onClose: () => void}>> = ({ title, onClose, children }) => (
-    <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 animation-fade-in">
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-sm animation-scale-in">
-            <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">{title}</h2>
-                <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-2xl font-bold">&times;</button>
+const Modal: React.FC<React.PropsWithChildren<{title: string, onClose: () => void}>> = ({ title, onClose, children }) => {
+    const modalRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                onClose();
+            }
+        };
+        document.addEventListener('keydown', handleKeyDown);
+        return () => document.removeEventListener('keydown', handleKeyDown);
+    }, [onClose]);
+
+    useEffect(() => {
+        const modalNode = modalRef.current;
+        if (!modalNode) return;
+
+        const focusableElements = modalNode.querySelectorAll<HTMLElement>(
+            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        );
+        const firstElement = focusableElements[0];
+        const lastElement = focusableElements[focusableElements.length - 1];
+
+        const handleTabKeyPress = (event: KeyboardEvent) => {
+            if (event.key === 'Tab') {
+                if (event.shiftKey) { // Shift+Tab
+                    if (document.activeElement === firstElement) {
+                        lastElement.focus();
+                        event.preventDefault();
+                    }
+                } else { // Tab
+                    if (document.activeElement === lastElement) {
+                        firstElement.focus();
+                        event.preventDefault();
+                    }
+                }
+            }
+        };
+        
+        if (firstElement) {
+            firstElement.focus();
+        }
+        modalNode.addEventListener('keydown', handleTabKeyPress);
+        return () => modalNode.removeEventListener('keydown', handleTabKeyPress);
+    }, []);
+
+    return (
+        <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 animation-fade-in" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+            <div ref={modalRef} className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-sm animation-scale-in">
+                <div className="flex justify-between items-center mb-4">
+                    <h2 id="modal-title" className="text-xl font-bold text-gray-800 dark:text-gray-100">{title}</h2>
+                    <button onClick={onClose} aria-label="Close" className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-2xl font-bold">&times;</button>
+                </div>
+                {children}
             </div>
-            {children}
         </div>
-    </div>
-);
+    );
+};
 
 export default MainScreen;

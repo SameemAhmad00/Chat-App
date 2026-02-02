@@ -105,7 +105,7 @@ const AdminChatViewer: React.FC<AdminChatViewerProps> = ({ adminUser, viewedUser
   return (
     <div className="flex flex-col h-full bg-gray-100 dark:bg-gray-900">
       <header className="bg-white dark:bg-black text-gray-800 dark:text-gray-100 p-3 flex items-center shadow-sm z-10">
-        <button onClick={onBack} className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full">
+        <button onClick={onBack} aria-label="Back to admin dashboard" className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full">
           <BackIcon className="w-6 h-6" />
         </button>
         <div className="ml-3">
@@ -145,16 +145,18 @@ const AdminContactList: React.FC<AdminContactListProps> = ({ viewedUser, onSelec
 
   return (
     <main className="flex-1 overflow-y-auto">
-      <div className="divide-y divide-gray-200 dark:divide-gray-700">
+      <ul className="divide-y divide-gray-200 dark:divide-gray-700">
         {contacts.map((contact) => (
-          <div key={contact.uid} className="flex items-center p-3 hover:bg-gray-200 dark:hover:bg-gray-800 cursor-pointer" onClick={() => onSelectChat(contact)}>
-            <Avatar photoURL={contact.photoURL} username={contact.username} />
-            <div className="flex-1 ml-4 overflow-hidden">
-              <p className="font-medium text-gray-800 dark:text-gray-100 truncate">{contact.username}</p>
+          <li key={contact.uid} className="hover:bg-gray-200 dark:hover:bg-gray-800 cursor-pointer" onClick={() => onSelectChat(contact)}>
+            <div className="flex items-center p-3">
+              <Avatar photoURL={contact.photoURL} username={contact.username} />
+              <div className="flex-1 ml-4 overflow-hidden">
+                <p className="font-medium text-gray-800 dark:text-gray-100 truncate">{contact.username}</p>
+              </div>
             </div>
-          </div>
+          </li>
         ))}
-      </div>
+      </ul>
     </main>
   );
 };
@@ -209,7 +211,19 @@ const AdminChatThread: React.FC<AdminChatThreadProps> = ({ viewedUser, chatPartn
     messages.forEach(msg => {
       const senderUsername = msg.from === viewedUser.uid ? viewedUser.username : chatPartner.username;
       const timestamp = new Date(msg.ts).toLocaleString();
-      chatContent += `[${timestamp}] @${senderUsername}: ${msg.isDeleted ? '(Message deleted)' : msg.text}\n`;
+      
+      let messageLine = `[${timestamp}] @${senderUsername}: `;
+      
+      if (msg.isDeleted) {
+        messageLine += '(Message deleted)';
+      } else {
+        messageLine += msg.text;
+        if (msg.editedAt) {
+          messageLine += ' (edited)';
+        }
+      }
+      
+      chatContent += messageLine + '\n';
     });
 
     const blob = new Blob([chatContent], { type: 'text/plain;charset=utf-8' });
@@ -315,7 +329,7 @@ const AdminChatThread: React.FC<AdminChatThreadProps> = ({ viewedUser, chatPartn
   return (
     <div className="flex flex-col h-full bg-gray-200 dark:bg-gray-800 relative">
       <header className={`bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-100 p-3 flex items-center shadow-sm z-10 ${isCapturing ? 'invisible' : ''}`}>
-        <button onClick={onBack} className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full">
+        <button onClick={onBack} aria-label="Back to contact list" className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full">
           <BackIcon className="w-6 h-6" />
         </button>
         <Avatar photoURL={chatPartner.photoURL} username={chatPartner.username} className="w-10 h-10 ml-2" />
@@ -323,10 +337,10 @@ const AdminChatThread: React.FC<AdminChatThreadProps> = ({ viewedUser, chatPartn
           <h2 className="font-bold text-lg leading-tight">{chatPartner.username}</h2>
           <p className="text-sm text-gray-500 dark:text-gray-400">Chat with {viewedUser.username}</p>
         </div>
-        <button onClick={handleExportChat} className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full" title="Export Chat as Text">
+        <button onClick={handleExportChat} className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full" aria-label="Export Chat as Text">
           <DownloadIcon className="w-6 h-6" />
         </button>
-        <button onClick={() => setIsDateModalOpen(true)} className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full" title="Long Screenshot">
+        <button onClick={() => setIsDateModalOpen(true)} className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full" aria-label="Capture screenshot of chat">
           <CameraIcon className="w-6 h-6" />
         </button>
       </header>
@@ -356,7 +370,7 @@ const AdminChatThread: React.FC<AdminChatThreadProps> = ({ viewedUser, chatPartn
       </main>
 
       {isCapturing && (
-        <div className="absolute inset-0 bg-black bg-opacity-60 flex flex-col items-center justify-center z-50 animation-fade-in">
+        <div className="absolute inset-0 bg-black bg-opacity-60 flex flex-col items-center justify-center z-50 animation-fade-in" role="status" aria-live="polite">
           <div className="w-8 h-8 border-4 border-t-transparent border-white rounded-full animate-spin"></div>
           <p className="text-white mt-4 text-lg">{captureStatus || 'Preparing capture...'}</p>
         </div>
@@ -366,17 +380,64 @@ const AdminChatThread: React.FC<AdminChatThreadProps> = ({ viewedUser, chatPartn
   );
 };
 
-const Modal: React.FC<React.PropsWithChildren<{title: string, onClose: () => void}>> = ({ title, onClose, children }) => (
-    <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 animation-fade-in">
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-sm animation-scale-in">
-            <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">{title}</h2>
-                <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-2xl font-bold">&times;</button>
+const Modal: React.FC<React.PropsWithChildren<{title: string, onClose: () => void}>> = ({ title, onClose, children }) => {
+    const modalRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                onClose();
+            }
+        };
+        document.addEventListener('keydown', handleKeyDown);
+        return () => document.removeEventListener('keydown', handleKeyDown);
+    }, [onClose]);
+
+    useEffect(() => {
+        const modalNode = modalRef.current;
+        if (!modalNode) return;
+
+        const focusableElements = modalNode.querySelectorAll<HTMLElement>(
+            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        );
+        const firstElement = focusableElements[0];
+        const lastElement = focusableElements[focusableElements.length - 1];
+
+        const handleTabKeyPress = (event: KeyboardEvent) => {
+            if (event.key === 'Tab') {
+                if (event.shiftKey) { // Shift+Tab
+                    if (document.activeElement === firstElement) {
+                        lastElement.focus();
+                        event.preventDefault();
+                    }
+                } else { // Tab
+                    if (document.activeElement === lastElement) {
+                        firstElement.focus();
+                        event.preventDefault();
+                    }
+                }
+            }
+        };
+        
+        if (firstElement) {
+            firstElement.focus();
+        }
+        modalNode.addEventListener('keydown', handleTabKeyPress);
+        return () => modalNode.removeEventListener('keydown', handleTabKeyPress);
+    }, []);
+    
+    return (
+        <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 animation-fade-in" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+            <div ref={modalRef} className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-sm animation-scale-in">
+                <div className="flex justify-between items-center mb-4">
+                    <h2 id="modal-title" className="text-xl font-bold text-gray-800 dark:text-gray-100">{title}</h2>
+                    <button onClick={onClose} aria-label="Close" className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-2xl font-bold">&times;</button>
+                </div>
+                {children}
             </div>
-            {children}
         </div>
-    </div>
-);
+    );
+};
 
 const DateRangeModal: React.FC<{ onClose: () => void; onCapture: (start: string, end: string) => void; }> = ({ onClose, onCapture }) => {
     const today = new Date().toISOString().split('T')[0];
@@ -421,7 +482,7 @@ const DateRangeModal: React.FC<{ onClose: () => void; onCapture: (start: string,
                     />
                 </div>
             </div>
-            {error && <p className="text-red-500 text-sm mt-2 text-center">{error}</p>}
+            {error && <p role="alert" className="text-red-500 text-sm mt-2 text-center">{error}</p>}
             <div className="mt-6 flex justify-end space-x-2">
                 <button onClick={onClose} className="px-4 py-2 text-green-600 dark:text-green-400 rounded hover:bg-gray-100 dark:hover:bg-gray-700 font-semibold">Cancel</button>
                 <button onClick={handleCapture} className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 font-semibold">Capture</button>

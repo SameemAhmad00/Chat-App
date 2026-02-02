@@ -5,11 +5,12 @@ import { db } from '../services/firebase';
 import type { UserProfile } from '../types';
 import { BackIcon, ShieldCheckIcon, TrashIcon, EyeIcon, CheckIcon, CancelIcon, ArrowUpIcon, ArrowDownIcon, PencilIcon, UsersIcon } from './Icons';
 import Avatar from './Avatar';
+import type { NavigationState } from '../App';
 
 interface AdminScreenProps {
   currentUserProfile: UserProfile;
   onBack: () => void;
-  onViewUserChats: (user: UserProfile) => void;
+  onNavigate: (state: NavigationState) => void;
 }
 
 type SortableKeys = 'name' | 'email' | 'isAdmin' | 'isBlockedByAdmin';
@@ -53,7 +54,7 @@ const UserSignupChart: React.FC<{ data: number[] }> = ({ data }) => {
     );
 };
 
-const AdminScreen: React.FC<AdminScreenProps> = ({ currentUserProfile, onBack, onViewUserChats }) => {
+const AdminScreen: React.FC<AdminScreenProps> = ({ currentUserProfile, onBack, onNavigate }) => {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -223,7 +224,7 @@ const AdminScreen: React.FC<AdminScreenProps> = ({ currentUserProfile, onBack, o
     const isSorted = sortConfig?.key === sortKey;
     const direction = sortConfig?.direction;
     return (
-        <th onClick={() => requestSort(sortKey)} className="p-3 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer select-none hover:bg-gray-100 dark:hover:bg-gray-700">
+        <th scope="col" onClick={() => requestSort(sortKey)} className="p-3 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer select-none hover:bg-gray-100 dark:hover:bg-gray-700">
             <div className="flex items-center">
                 {children}
                 {isSorted && (direction === 'ascending' ? <ArrowUpIcon className="w-4 h-4 ml-1" /> : <ArrowDownIcon className="w-4 h-4 ml-1" />)}
@@ -235,7 +236,7 @@ const AdminScreen: React.FC<AdminScreenProps> = ({ currentUserProfile, onBack, o
   return (
     <div className="flex flex-col h-full bg-gray-100 dark:bg-gray-900">
       <header className="bg-white dark:bg-black text-gray-800 dark:text-gray-100 p-3 flex items-center shadow-sm z-10 shrink-0">
-        <button onClick={onBack} className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full">
+        <button onClick={onBack} aria-label="Back to main screen" className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full">
           <BackIcon className="w-6 h-6" />
         </button>
         <h2 className="font-bold text-lg ml-3">Admin Dashboard</h2>
@@ -260,6 +261,7 @@ const AdminScreen: React.FC<AdminScreenProps> = ({ currentUserProfile, onBack, o
                         <input
                             type="text"
                             placeholder="Search users..."
+                            aria-label="Search users"
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             className="w-full px-3 py-1.5 bg-gray-50 dark:bg-gray-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-green-500 border border-gray-200 dark:border-gray-600 text-sm"
@@ -278,7 +280,7 @@ const AdminScreen: React.FC<AdminScreenProps> = ({ currentUserProfile, onBack, o
                                   <SortableHeader sortKey="email">Email</SortableHeader>
                                   <SortableHeader sortKey="isAdmin">Admin</SortableHeader>
                                   <SortableHeader sortKey="isBlockedByAdmin">Blocked</SortableHeader>
-                                  <th className="p-3 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
+                                  <th scope="col" className="p-3 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
                               </tr>
                           </thead>
                           <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
@@ -292,18 +294,18 @@ const AdminScreen: React.FC<AdminScreenProps> = ({ currentUserProfile, onBack, o
                                                   <div className="ml-3">
                                                       <p className="font-bold text-gray-900 dark:text-gray-100">{user.name}</p>
                                                       {isEditingThisUser ? (
-                                                        <div className="flex items-center mt-1"><span className="text-sm text-gray-500 dark:text-gray-400">@</span><input type="text" value={editingUser.newUsername} onChange={(e) => setEditingUser({ ...editingUser, newUsername: e.target.value.toLowerCase().replace(/[^a-z0-9_.]/g, '') })} className="w-full p-1 text-sm bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500" autoFocus onKeyDown={(e) => e.key === 'Enter' && handleUpdateUsername(user)} /></div>
+                                                        <div className="flex items-center mt-1"><span className="text-sm text-gray-600 dark:text-gray-300">@</span><input type="text" value={editingUser.newUsername} onChange={(e) => setEditingUser({ ...editingUser, newUsername: e.target.value.toLowerCase().replace(/[^a-z0-9_.]/g, '') })} className="w-full p-1 text-sm bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500" autoFocus onKeyDown={(e) => e.key === 'Enter' && handleUpdateUsername(user)} /></div>
                                                       ) : (
-                                                        <p className="text-sm text-gray-500 dark:text-gray-400">@{user.username}</p>
+                                                        <p className="text-sm text-gray-600 dark:text-gray-300">@{user.username}</p>
                                                       )}
                                                   </div>
                                               </div>
                                           </td>
-                                          <td className="p-3 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{user.email}</td>
+                                          <td className="p-3 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">{user.email}</td>
                                           <td className="p-3 whitespace-nowrap text-center">{user.isAdmin ? <CheckIcon className="w-5 h-5 text-green-500 mx-auto" /> : <CancelIcon className="w-5 h-5 text-red-500 mx-auto opacity-50" />}</td>
                                           <td className="p-3 whitespace-nowrap text-center">{user.isBlockedByAdmin ? <CheckIcon className="w-5 h-5 text-yellow-500 mx-auto" /> : <CancelIcon className="w-5 h-5 text-red-500 mx-auto opacity-50" />}</td>
                                           <td className="p-3 whitespace-nowrap text-sm font-medium">
-                                              <div className="flex items-center space-x-1">{isEditingThisUser ? (<><button onClick={() => handleUpdateUsername(user)} className="p-2 text-green-500 hover:bg-green-100 dark:hover:bg-green-900/50 rounded-full" title="Save"><CheckIcon className="w-5 h-5" /></button><button onClick={() => setEditingUser(null)} className="p-2 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/50 rounded-full" title="Cancel"><CancelIcon className="w-5 h-5" /></button></>) : (<><button onClick={() => onViewUserChats(user)} className="p-2 text-blue-500 hover:bg-blue-100 dark:hover:bg-blue-900/50 rounded-full" title="View User Chats"><EyeIcon className="w-5 h-5" /></button><button onClick={() => setEditingUser({ uid: user.uid, newUsername: user.username || '' })} className="p-2 text-indigo-500 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 rounded-full" title="Edit Username"><PencilIcon className="w-5 h-5" /></button><button onClick={() => handleToggleAdmin(user.uid, !!user.isAdmin)} className="p-2 text-green-500 hover:bg-green-100 dark:hover:bg-green-900/50 rounded-full disabled:opacity-30 disabled:hover:bg-transparent" disabled={user.uid === currentUserProfile.uid} title={user.isAdmin ? 'Remove Admin' : 'Make Admin'}><ShieldCheckIcon className="w-5 h-5" /></button><button onClick={() => handleToggleBlock(user.uid, !!user.isBlockedByAdmin)} className="p-2 text-yellow-500 hover:bg-yellow-100 dark:hover:bg-yellow-900/50 rounded-full disabled:opacity-30 disabled:hover:bg-transparent" disabled={user.uid === currentUserProfile.uid} title={user.isBlockedByAdmin ? 'Unblock' : 'Block'}><CheckIcon className="w-5 h-5" /></button><button onClick={() => handleDeleteUser(user)} className="p-2 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/50 rounded-full disabled:opacity-30 disabled:hover:bg-transparent" disabled={user.uid === currentUserProfile.uid} title="Delete User"><TrashIcon className="w-5 h-5" /></button></>)}</div>
+                                              <div className="flex items-center space-x-1">{isEditingThisUser ? (<><button onClick={() => handleUpdateUsername(user)} className="p-2 text-green-500 hover:bg-green-100 dark:hover:bg-green-900/50 rounded-full" aria-label={`Save username for ${user.username}`}><CheckIcon className="w-5 h-5" /></button><button onClick={() => setEditingUser(null)} className="p-2 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/50 rounded-full" aria-label="Cancel username edit"><CancelIcon className="w-5 h-5" /></button></>) : (<><button onClick={() => onNavigate({ view: 'adminChatViewer', viewedUser: user })} className="p-2 text-blue-500 hover:bg-blue-100 dark:hover:bg-blue-900/50 rounded-full" aria-label={`View chats for ${user.username}`}><EyeIcon className="w-5 h-5" /></button><button onClick={() => setEditingUser({ uid: user.uid, newUsername: user.username || '' })} className="p-2 text-indigo-500 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 rounded-full" aria-label={`Edit username for ${user.username}`}><PencilIcon className="w-5 h-5" /></button><button onClick={() => handleToggleAdmin(user.uid, !!user.isAdmin)} className="p-2 text-green-500 hover:bg-green-100 dark:hover:bg-green-900/50 rounded-full disabled:opacity-30 disabled:hover:bg-transparent" disabled={user.uid === currentUserProfile.uid} aria-label={user.isAdmin ? `Remove admin status from ${user.username}` : `Make ${user.username} an admin`}><ShieldCheckIcon className="w-5 h-5" /></button><button onClick={() => handleToggleBlock(user.uid, !!user.isBlockedByAdmin)} className="p-2 text-yellow-500 hover:bg-yellow-100 dark:hover:bg-yellow-900/50 rounded-full disabled:opacity-30 disabled:hover:bg-transparent" disabled={user.uid === currentUserProfile.uid} aria-label={user.isBlockedByAdmin ? `Unblock ${user.username}` : `Block ${user.username}`}><CheckIcon className="w-5 h-5" /></button><button onClick={() => handleDeleteUser(user)} className="p-2 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/50 rounded-full disabled:opacity-30 disabled:hover:bg-transparent" disabled={user.uid === currentUserProfile.uid} aria-label={`Delete user ${user.username}`}><TrashIcon className="w-5 h-5" /></button></>)}</div>
                                           </td>
                                       </tr>
                                   )

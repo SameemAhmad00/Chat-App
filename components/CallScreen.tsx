@@ -25,6 +25,7 @@ const CallScreen: React.FC<CallScreenProps> = ({ profile, activeCall, localStrea
   const [isMuted, setIsMuted] = useState(false);
   const [isCameraOff, setIsCameraOff] = useState(false);
   const [duration, setDuration] = useState(0);
+  const [statusMessage, setStatusMessage] = useState('');
 
   useEffect(() => {
     if (activeCall.status === 'connected') {
@@ -48,23 +49,28 @@ const CallScreen: React.FC<CallScreenProps> = ({ profile, activeCall, localStrea
   }, [remoteStream]);
 
   const handleToggleMute = () => {
+    const newMutedState = !isMuted;
     localStream?.getAudioTracks().forEach(track => {
-      track.enabled = !track.enabled;
+      track.enabled = !newMutedState;
     });
-    setIsMuted(prev => !prev);
+    setIsMuted(newMutedState);
+    setStatusMessage(newMutedState ? 'Microphone muted' : 'Microphone unmuted');
   };
 
   const handleToggleCamera = () => {
+    const newCameraState = !isCameraOff;
     localStream?.getVideoTracks().forEach(track => {
-      track.enabled = !track.enabled;
+      track.enabled = !newCameraState;
     });
-    setIsCameraOff(prev => !prev);
+    setIsCameraOff(newCameraState);
+    setStatusMessage(newCameraState ? 'Camera off' : 'Camera on');
   };
 
   const isVideoCall = activeCall.type === 'video';
 
   return (
     <div className="relative h-full w-full bg-black flex items-center justify-center">
+      <div className="sr-only" aria-live="polite">{statusMessage}</div>
       {/* Remote Video/Audio */}
       {isVideoCall ? (
         <video ref={remoteVideoRef} autoPlay playsInline className="h-full w-full object-cover" />
@@ -112,14 +118,14 @@ const CallScreen: React.FC<CallScreenProps> = ({ profile, activeCall, localStrea
               <button
                 onClick={handleToggleMute}
                 className={`w-14 h-14 ${isMuted ? 'bg-white' : 'bg-white/30'} rounded-full flex items-center justify-center transition-colors`}
-                title={isMuted ? 'Unmute' : 'Mute'}
+                aria-label={isMuted ? 'Unmute' : 'Mute'}
               >
                 {isMuted ? <MicrophoneOffIcon className="w-7 h-7 text-black" /> : <MicrophoneIcon className="w-7 h-7 text-white" />}
               </button>
               <button
                 onClick={handleToggleCamera}
                 className={`w-14 h-14 ${isCameraOff ? 'bg-white' : 'bg-white/30'} rounded-full flex items-center justify-center transition-colors`}
-                title={isCameraOff ? 'Turn Camera On' : 'Turn Camera Off'}
+                aria-label={isCameraOff ? 'Turn Camera On' : 'Turn Camera Off'}
               >
                 {isCameraOff ? <VideoOffIcon className="w-7 h-7 text-black" /> : <VideoIcon className="w-7 h-7 text-white" />}
               </button>
@@ -129,7 +135,7 @@ const CallScreen: React.FC<CallScreenProps> = ({ profile, activeCall, localStrea
           <button
             onClick={() => onEndCall(duration)}
             className="w-16 h-16 bg-red-600 rounded-full flex items-center justify-center transform transition hover:scale-110 shadow-lg"
-            title="End Call"
+            aria-label="End Call"
           >
             <EndCallIcon className="w-8 h-8 text-white" />
           </button>

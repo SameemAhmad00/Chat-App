@@ -20,9 +20,8 @@ export const startOutgoingCall = async (
   pcRef: PeerConnectionRef,
   setLocalStream: (stream: MediaStream | null) => void,
   setRemoteStream: (stream: MediaStream | null) => void,
-  setActiveCall: (call: ActiveCall | null) => void,
   cleanup: () => void
-): Promise<(() => void)[]> => {
+): Promise<{ activeCall: ActiveCall | null; unsubscribers: (() => void)[] }> => {
   try {
     const stream = await navigator.mediaDevices.getUserMedia(
       type === 'video' ? { video: true, audio: true } : { audio: true }
@@ -43,7 +42,6 @@ export const startOutgoingCall = async (
     });
 
     const newActiveCall: ActiveCall = { id: callId, partner, type, role: 'caller', status: 'connecting' };
-    setActiveCall(newActiveCall);
 
     pcRef.current = new RTCPeerConnection(rtcConfig);
     stream.getTracks().forEach(track => pcRef.current?.addTrack(track, stream));
@@ -65,12 +63,13 @@ export const startOutgoingCall = async (
     };
     await db.ref(`calls/${partner.uid}/${callId}`).set(callPayload);
     
-    return setupCallListeners(callId, newActiveCall, db, pcRef);
+    const unsubscribers = setupCallListeners(callId, newActiveCall, db, pcRef);
+    return { activeCall: newActiveCall, unsubscribers };
 
   } catch (error) {
     console.error("Error starting call:", error);
     cleanup();
-    return [];
+    return { activeCall: null, unsubscribers: [] };
   }
 };
 
@@ -82,9 +81,8 @@ export const acceptIncomingCall = async (
   pcRef: PeerConnectionRef,
   setLocalStream: (stream: MediaStream | null) => void,
   setRemoteStream: (stream: MediaStream | null) => void,
-  setActiveCall: (call: ActiveCall | null) => void,
   cleanup: () => void
-): Promise<(() => void)[]> => {
+): Promise<{ activeCall: ActiveCall | null; unsubscribers: (() => void)[] }> => {
   try {
     const stream = await navigator.mediaDevices.getUserMedia(
       incomingCall.type === 'video' ? { video: true, audio: true } : { audio: true }
@@ -98,7 +96,6 @@ export const acceptIncomingCall = async (
       role: 'callee', 
       status: 'connecting' 
     };
-    setActiveCall(newActiveCall);
 
     // Log the incoming call for the current user upon accepting.
     const callTimestamp = firebase.database.ServerValue.TIMESTAMP;
@@ -122,12 +119,13 @@ export const acceptIncomingCall = async (
 
     await db.ref(`calls/${user.uid}/${incomingCall.id}/answer`).set(answer);
 
-    return setupCallListeners(incomingCall.id, newActiveCall, db, pcRef);
+    const unsubscribers = setupCallListeners(incomingCall.id, newActiveCall, db, pcRef);
+    return { activeCall: newActiveCall, unsubscribers };
     
   } catch (error) {
     console.error("Error accepting call:", error);
     cleanup();
-    return [];
+    return { activeCall: null, unsubscribers: [] };
   }
 };
 
