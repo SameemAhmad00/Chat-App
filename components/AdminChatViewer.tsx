@@ -50,44 +50,51 @@ const AdminMessageBubble: React.FC<{
   onScrollToMessage: (messageId: string) => void;
 }> = ({ msg, isFromViewedUser, onScrollToMessage }) => {
   if (msg.isDeleted) {
-      return (
-        <div id={`message-${msg.id}`} className={`flex items-start group chat-message ${isFromViewedUser ? 'justify-end' : 'justify-start'}`}>
-          <div className={`max-w-xs md:max-w-md lg:max-w-lg px-3 py-2 rounded-lg shadow-sm relative flex items-center bg-transparent`}>
-             <ProhibitIcon className="w-5 h-5 text-gray-400 dark:text-gray-500 mr-2" />
-             <p className="italic text-gray-500 dark:text-gray-400 pr-16 pb-1">This message was deleted</p>
-             <div className={`absolute bottom-1 right-2 text-xs flex items-center text-gray-400 dark:text-gray-500`}>
-               <span>{new Date(msg.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}</span>
-             </div>
-          </div>
+    return (
+      <div id={`message-${msg.id}`} className={`flex items-start group chat-message ${isFromViewedUser ? 'justify-end' : 'justify-start'}`}>
+        <div className={`max-w-xs md:max-w-md lg:max-w-lg px-3 py-2 rounded-lg shadow-sm relative flex items-center bg-transparent`}>
+           <ProhibitIcon className="w-5 h-5 text-gray-400 dark:text-gray-500 mr-2" />
+           <p className="italic text-gray-500 dark:text-gray-400 pr-16 pb-1">This message was deleted</p>
+           <div className={`absolute bottom-1 right-2 text-xs flex items-center text-gray-500 dark:text-gray-400`}>
+             <span>{new Date(msg.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}</span>
+           </div>
         </div>
-      );
+      </div>
+    );
   }
 
   return (
-    <div id={`message-${msg.id}`} className={`flex ${isFromViewedUser ? 'justify-end' : 'justify-start'}`}>
+    <div
+      id={`message-${msg.id}`}
+      className={`flex items-start group chat-message ${isFromViewedUser ? 'justify-end' : 'justify-start'}`}
+    >
       <div
         className={`max-w-xs md:max-w-md lg:max-w-lg px-3 py-2 rounded-lg shadow-sm relative ${
           isFromViewedUser ? 'bg-green-100 dark:bg-green-800' : 'bg-white dark:bg-gray-700'
         } text-gray-800 dark:text-gray-100`}
       >
         {msg.replyTo && (
-          <div
+          <button
             onClick={() => onScrollToMessage(msg.replyTo.messageId)}
-            className="mb-2 p-2 border-l-2 border-green-500 dark:border-green-400 bg-black/5 dark:bg-white/5 rounded-md cursor-pointer"
+            aria-label={`Replying to: ${msg.replyTo.text}`}
+            className="mb-2 p-2 w-full text-left border-l-2 border-green-500 dark:border-green-400 bg-black/5 dark:bg-white/5 rounded-md cursor-pointer"
           >
             <p className="font-bold text-sm text-green-600 dark:text-green-400">{msg.replyTo.authorUsername}</p>
             <p className="text-sm text-gray-600 dark:text-gray-300 truncate">{msg.replyTo.text}</p>
-          </div>
+          </button>
         )}
-        <p className="pb-1" style={{ whiteSpace: 'pre-wrap' }}>{msg.text}</p>
-        <div className="text-right text-xs text-gray-400 dark:text-gray-500 mt-1">
-          {msg.editedAt && <span className="italic mr-1">edited</span>}
-          {new Date(msg.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        <div className="flex flex-wrap items-baseline" style={{ wordBreak: 'break-word' }}>
+          <p className="mr-2" style={{ whiteSpace: 'pre-wrap' }}>{msg.text}</p>
+          <div className="flex items-center text-xs text-gray-600 dark:text-gray-300 ml-auto self-end shrink-0">
+            {msg.editedAt && <span className="mr-1 italic">edited</span>}
+            <span className="mr-1">{new Date(msg.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}</span>
+          </div>
         </div>
       </div>
     </div>
   );
 };
+
 
 const AdminChatViewer: React.FC<AdminChatViewerProps> = ({ adminUser, viewedUser, onBack }) => {
   const [selectedChatPartner, setSelectedChatPartner] = useState<Contact | null>(null);
