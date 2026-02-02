@@ -4,13 +4,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import firebase from 'firebase/compat/app';
 import { db } from '../services/firebase';
 import type { UserProfile, Contact, Message } from '../types';
-import { BackIcon, PhoneIcon, VideoIcon, SendIcon, MoreIcon, CheckIcon, PencilIcon, CancelIcon, ReplyIcon, CameraIcon } from './Icons';
+import { BackIcon, PhoneIcon, VideoIcon, SendIcon, MoreIcon, CheckIcon, PencilIcon, CancelIcon, ReplyIcon, TrashIcon, ProhibitIcon } from './Icons';
 import { formatPresenceTimestamp } from '../utils/format';
 import Avatar from './Avatar';
-import { useTheme } from '../contexts/ThemeContext';
-
-// Make html2canvas available from the global scope where it's loaded via script tag
-declare const html2canvas: any;
 
 interface ChatScreenProps {
   // FIX: Use User type from firebase compat library.
@@ -20,6 +16,20 @@ interface ChatScreenProps {
   onBack: () => void;
   onStartCall: (partner: Contact, type: 'video' | 'voice') => void;
 }
+
+const isSameDay = (d1: Date, d2: Date) => {
+    return d1.getFullYear() === d2.getFullYear() &&
+        d1.getMonth() === d2.getMonth() &&
+        d1.getDate() === d2.getDate();
+}
+
+const DateSeparator: React.FC<{ date: Date }> = ({ date }) => (
+  <div className="flex justify-center my-3">
+    <span className="bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs font-semibold px-3 py-1 rounded-full shadow-sm">
+      {date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}
+    </span>
+  </div>
+);
 
 const ReadReceipt: React.FC<{ status?: 'sent' | 'delivered' | 'read' }> = ({ status }) => {
   if (status === 'read') {
@@ -54,8 +64,9 @@ const MessageBubble: React.FC<{
   isOwnMessage: boolean;
   onStartEdit: (msg: Message) => void;
   onStartReply: (msg: Message) => void;
+  onDelete: (msg: Message) => void;
   onScrollToMessage: (messageId: string) => void;
-}> = ({ msg, isOwnMessage, onStartEdit, onStartReply, onScrollToMessage }) => {
+}> = ({ msg, isOwnMessage, onStartEdit, onStartReply, onDelete, onScrollToMessage }) => {
   const [showMenu, setShowMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const [swipeX, setSwipeX] = useState(0);
@@ -63,9 +74,10 @@ const MessageBubble: React.FC<{
   const swipeableContainerRef = useRef<HTMLDivElement>(null);
   
   const SWIPE_THRESHOLD = 50;
-  const isEditable = isOwnMessage && (Date.now() - msg.ts < 15 * 60 * 1000);
+  const isEditable = isOwnMessage && !msg.isDeleted && (Date.now() - msg.ts < 15 * 60 * 1000);
 
   const handleContextMenu = (e: React.MouseEvent) => {
+    if (msg.isDeleted) return;
     e.preventDefault();
     setShowMenu(true);
   };
@@ -81,6 +93,7 @@ const MessageBubble: React.FC<{
   }, [menuRef]);
   
   const handleTouchStart = (e: React.TouchEvent) => {
+    if (msg.isDeleted) return;
     touchStartRef.current = e.touches[0].clientX;
     if(swipeableContainerRef.current) {
       swipeableContainerRef.current.style.transition = 'none';
@@ -88,6 +101,7 @@ const MessageBubble: React.FC<{
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
+    if (msg.isDeleted) return;
     const touchX = e.touches[0].clientX;
     let deltaX = touchX - touchStartRef.current;
 
@@ -102,6 +116,7 @@ const MessageBubble: React.FC<{
   };
 
   const handleTouchEnd = () => {
+    if (msg.isDeleted) return;
     if(swipeableContainerRef.current) {
       swipeableContainerRef.current.style.transition = 'transform 0.2s ease-out';
     }
@@ -112,6 +127,20 @@ const MessageBubble: React.FC<{
     
     setSwipeX(0);
   };
+
+  if (msg.isDeleted) {
+    return (
+      <div id={`message-${msg.id}`} className={`flex items-start group chat-message ${isOwnMessage ? 'justify-end' : 'justify-start'}`}>
+        <div className={`max-w-xs md:max-w-md lg:max-w-lg px-3 py-2 rounded-lg shadow-sm relative flex items-center bg-transparent`}>
+           <ProhibitIcon className="w-5 h-5 text-gray-400 dark:text-gray-500 mr-2" />
+           <p className="italic text-gray-500 dark:text-gray-400 pr-16 pb-1">This message was deleted</p>
+           <div className={`absolute bottom-1 right-2 text-xs flex items-center text-gray-400 dark:text-gray-500`}>
+             <span>{new Date(msg.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}</span>
+           </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -180,6 +209,15 @@ const MessageBubble: React.FC<{
                     Edit
                   </button>
                 )}
+                {isOwnMessage && (
+                  <button
+                    onClick={() => { onDelete(msg); setShowMenu(false); }}
+                    className="flex items-center w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-gray-100 dark:hover:bg-gray-500"
+                  >
+                    <TrashIcon className="w-4 h-4 mr-2" />
+                    Delete
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -211,9 +249,6 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ user, profile, partner, onBack,
   const [isPartnerTyping, setIsPartnerTyping] = useState(false);
   const [partnerPresence, setPartnerPresence] = useState<'online' | number | null>(null);
   const typingTimeoutRef = useRef<any>(null);
-  const [isCapturing, setIsCapturing] = useState(false);
-  const [captureStatus, setCaptureStatus] = useState('');
-  const { theme } = useTheme();
   
   const chatId = [user.uid, partner.uid].sort().join('_');
   // FIX: Use compat version of ref.
@@ -325,7 +360,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ user, profile, partner, onBack,
             messageId: replyingTo.id,
             authorUid: replyingTo.from,
             authorUsername: replyingTo.from === user.uid ? profile.username : partner.username,
-            text: replyingTo.text,
+            text: replyingTo.isDeleted ? "This message was deleted" : replyingTo.text,
         };
       }
       
@@ -383,6 +418,16 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ user, profile, partner, onBack,
     inputRef.current?.focus();
   };
   
+  const handleDeleteMessage = async (msg: Message) => {
+    if (window.confirm("Are you sure you want to delete this message?")) {
+        const messageRef = db.ref(`messages/${chatId}/${msg.id}`);
+        await messageRef.update({ 
+            isDeleted: true,
+            text: "This message was deleted" // Keep text for replies, but update for display
+        });
+    }
+  };
+
   const handleScrollToMessage = (messageId: string) => {
     const element = document.getElementById(`message-${messageId}`);
     if (element) {
@@ -427,93 +472,6 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ user, profile, partner, onBack,
     setMenuOpen(false);
   };
 
-  const handleCaptureChat = async () => {
-    const chatContainer = chatContainerRef.current;
-    if (!chatContainer) {
-      alert("Could not find chat container to capture.");
-      return;
-    }
-    setMenuOpen(false);
-    setIsCapturing(true);
-
-    // Store original state to restore later
-    const originalMessages = messages;
-    const originalScrollTop = chatContainer.scrollTop;
-    const originalHeight = chatContainer.style.height;
-    const originalOverflow = chatContainer.style.overflow;
-
-    try {
-      setCaptureStatus('Loading full conversation...');
-      // 1. Fetch the entire conversation history without server-side ordering
-      const allMessagesRef = db.ref(`messages/${chatId}`);
-      const snapshot = await allMessagesRef.get();
-      const data = snapshot.val() || {};
-      // 2. Map to an array and sort on the client-side to avoid indexing errors
-      const allMessagesList: Message[] = Object.keys(data)
-        .map(key => ({ ...data[key], id: key } as Message))
-        .sort((a, b) => a.ts - b.ts);
-
-      // 3. Temporarily update the state to render all messages
-      setMessages(allMessagesList);
-
-      // 4. Wait for React to render the full list
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      // 5. Prepare container for capture
-      chatContainer.classList.add('hide-scrollbar-for-capture');
-      chatContainer.style.height = 'auto';
-      chatContainer.style.overflow = 'visible';
-      chatContainer.scrollTop = 0;
-
-      const exportHeader = document.createElement('div');
-      exportHeader.className = 'p-4 bg-gray-200 dark:bg-gray-800 text-gray-800 dark:text-gray-100 flex flex-col items-center border-b-2 border-gray-300 dark:border-gray-700 pb-4 mb-4';
-      exportHeader.innerHTML = `
-          <h2 class="text-xl font-bold">${partner.username}</h2>
-          <p class="text-sm text-gray-500 dark:text-gray-400">Chat History</p>
-          <p class="text-xs text-gray-400 dark:text-gray-300 mt-1">Exported on ${new Date().toLocaleString()}</p>
-      `;
-      chatContainer.prepend(exportHeader);
-
-      setCaptureStatus('Generating high-quality image...');
-      // 6. Perform the capture
-      const canvas = await html2canvas(chatContainer, {
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: theme === 'dark' ? '#1f2937' : '#e5e7eb',
-        scale: window.devicePixelRatio,
-      });
-
-      setCaptureStatus('Preparing download...');
-      // 7. Trigger download
-      const link = document.createElement('a');
-      link.download = `sameem-chat-with-${partner.username}.png`;
-      link.href = canvas.toDataURL('image/png');
-      link.click();
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      // 8. Restore styles immediately after capture to prevent visual glitches
-      exportHeader.remove();
-      chatContainer.style.height = originalHeight;
-      chatContainer.style.overflow = originalOverflow;
-      chatContainer.classList.remove('hide-scrollbar-for-capture');
-      
-    } catch (error) {
-      console.error("Failed to capture chat:", error);
-      alert("Sorry, something went wrong while capturing the chat.");
-    } finally {
-      // 9. Restore original messages and scroll position
-      setMessages(originalMessages);
-      setTimeout(() => {
-        if (chatContainerRef.current) {
-          chatContainerRef.current.scrollTop = originalScrollTop;
-        }
-      }, 0);
-      setIsCapturing(false);
-      setCaptureStatus('');
-    }
-  };
-
-
   const renderPresenceHeader = () => {
     if (isPartnerTyping) {
       return <p className="text-sm text-green-500 dark:text-green-400">typing...</p>;
@@ -529,7 +487,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ user, profile, partner, onBack,
 
   return (
     <div className="flex flex-col h-full bg-gray-200 dark:bg-gray-800 relative">
-      <header className={`bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-100 p-3 flex items-center shadow-sm z-10 ${isCapturing ? 'invisible' : ''}`}>
+      <header className={`bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-100 p-3 flex items-center shadow-sm z-10`}>
         <button onClick={onBack} className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full"><BackIcon className="w-6 h-6" /></button>
         <Avatar photoURL={partner.photoURL} username={partner.username} className="w-10 h-10 ml-2" />
         <div className="flex-1 ml-3">
@@ -542,10 +500,6 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ user, profile, partner, onBack,
           <button onClick={() => setMenuOpen(!isMenuOpen)} className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full"><MoreIcon className="w-6 h-6" /></button>
           {isMenuOpen && (
               <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-700 rounded-md shadow-lg py-1 z-20 animation-scale-in origin-top-right">
-                  <button onClick={handleCaptureChat} className="flex items-center w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600">
-                      <CameraIcon className="w-4 h-4 mr-2" />
-                      Long Screenshot
-                  </button>
                   <button onClick={handleBlockUser} className="block w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600">
                       {profile.blocked && profile.blocked[partner.uid] ? 'Unblock User' : 'Block User'}
                   </button>
@@ -558,16 +512,22 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ user, profile, partner, onBack,
       </header>
       
       <main ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-2 chat-message-list">
-        {messages.map((msg) => (
-          <MessageBubble
-            key={msg.id}
-            msg={msg}
-            isOwnMessage={msg.from === user.uid}
-            onStartEdit={handleStartEdit}
-            onStartReply={handleStartReply}
-            onScrollToMessage={handleScrollToMessage}
-          />
-        ))}
+        {messages.map((msg, index) => {
+            const showDateSeparator = index === 0 || !isSameDay(new Date(messages[index - 1].ts), new Date(msg.ts));
+            return (
+                <React.Fragment key={msg.id}>
+                    {showDateSeparator && <DateSeparator date={new Date(msg.ts)} />}
+                    <MessageBubble
+                        msg={msg}
+                        isOwnMessage={msg.from === user.uid}
+                        onStartEdit={handleStartEdit}
+                        onStartReply={handleStartReply}
+                        onDelete={handleDeleteMessage}
+                        onScrollToMessage={handleScrollToMessage}
+                    />
+                </React.Fragment>
+            )
+        })}
         <div 
             className={`transition-all duration-300 ease-in-out transform ${isPartnerTyping ? 'opacity-100 translate-y-0 max-h-20' : 'opacity-0 -translate-y-2 max-h-0'}`}
             style={{ overflow: 'hidden' }}
@@ -583,13 +543,13 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ user, profile, partner, onBack,
         <div ref={messagesEndRef} />
       </main>
 
-      <div className={`bg-gray-100 dark:bg-gray-900 p-3 border-t border-gray-200 dark:border-gray-700 transition-all duration-200 ${isCapturing ? 'invisible' : ''}`}>
+      <div className={`bg-gray-100 dark:bg-gray-900 p-3 border-t border-gray-200 dark:border-gray-700 transition-all duration-200`}>
         {replyingTo && (
             <div className="flex justify-between items-center text-sm px-1 pb-2">
                 <div className="flex-1 flex items-center overflow-hidden border-l-4 border-green-500 dark:border-green-400 pl-3">
                      <div className="flex-1 overflow-hidden">
                         <p className="font-bold text-green-600 dark:text-green-400">Replying to {replyingTo.from === user.uid ? 'Yourself' : partner.username}</p>
-                        <p className="truncate text-gray-500 dark:text-gray-400">{replyingTo.text}</p>
+                        <p className="truncate text-gray-500 dark:text-gray-400">{replyingTo.isDeleted ? 'This message was deleted' : replyingTo.text}</p>
                     </div>
                 </div>
                 <button onClick={handleCancelReply} className="p-1 rounded-full hover:bg-gray-300 dark:hover:bg-gray-600 ml-2">
@@ -626,13 +586,6 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ user, profile, partner, onBack,
           </button>
         </form>
       </div>
-      
-      {isCapturing && (
-        <div className="absolute inset-0 bg-black bg-opacity-60 flex flex-col items-center justify-center z-50 animation-fade-in">
-          <div className="w-8 h-8 border-4 border-t-transparent border-white rounded-full animate-spin"></div>
-          <p className="text-white mt-4 text-lg">{captureStatus || 'Preparing capture...'}</p>
-        </div>
-      )}
     </div>
   );
 };

@@ -1,10 +1,14 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 // FIX: Use firebase v9 compat imports to resolve module errors.
 import { db } from '../services/firebase';
 import type { UserProfile, Contact, Message } from '../types';
-import { BackIcon, DownloadIcon } from './Icons';
+import { BackIcon, DownloadIcon, CameraIcon, ProhibitIcon } from './Icons';
 import Avatar from './Avatar';
+import { useTheme } from '../contexts/ThemeContext';
+
+// Make html2canvas available from the global scope where it's loaded via script tag
+declare const html2canvas: any;
 
 // Props for the main viewer component
 interface AdminChatViewerProps {
@@ -25,6 +29,65 @@ interface AdminContactListProps {
   viewedUser: UserProfile;
   onSelectChat: (partner: Contact) => void;
 }
+
+const isSameDay = (d1: Date, d2: Date) => {
+    return d1.getFullYear() === d2.getFullYear() &&
+        d1.getMonth() === d2.getMonth() &&
+        d1.getDate() === d2.getDate();
+}
+
+const DateSeparator: React.FC<{ date: Date }> = ({ date }) => (
+  <div className="flex justify-center my-3">
+    <span className="bg-gray-300 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs font-semibold px-3 py-1 rounded-full shadow-sm">
+      {date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}
+    </span>
+  </div>
+);
+
+const AdminMessageBubble: React.FC<{
+  msg: Message;
+  isFromViewedUser: boolean;
+  onScrollToMessage: (messageId: string) => void;
+}> = ({ msg, isFromViewedUser, onScrollToMessage }) => {
+  if (msg.isDeleted) {
+      return (
+        <div id={`message-${msg.id}`} className={`flex items-start group chat-message ${isFromViewedUser ? 'justify-end' : 'justify-start'}`}>
+          <div className={`max-w-xs md:max-w-md lg:max-w-lg px-3 py-2 rounded-lg shadow-sm relative flex items-center bg-transparent`}>
+             <ProhibitIcon className="w-5 h-5 text-gray-400 dark:text-gray-500 mr-2" />
+             <p className="italic text-gray-500 dark:text-gray-400 pr-16 pb-1">This message was deleted</p>
+             <div className={`absolute bottom-1 right-2 text-xs flex items-center text-gray-400 dark:text-gray-500`}>
+               <span>{new Date(msg.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}</span>
+             </div>
+          </div>
+        </div>
+      );
+  }
+
+  return (
+    <div id={`message-${msg.id}`} className={`flex ${isFromViewedUser ? 'justify-end' : 'justify-start'}`}>
+      <div
+        className={`max-w-xs md:max-w-md lg:max-w-lg px-3 py-2 rounded-lg shadow-sm relative ${
+          isFromViewedUser ? 'bg-green-100 dark:bg-green-800' : 'bg-white dark:bg-gray-700'
+        } text-gray-800 dark:text-gray-100`}
+      >
+        {msg.replyTo && (
+          <div
+            onClick={() => onScrollToMessage(msg.replyTo.messageId)}
+            className="mb-2 p-2 border-l-2 border-green-500 dark:border-green-400 bg-black/5 dark:bg-white/5 rounded-md cursor-pointer"
+          >
+            <p className="font-bold text-sm text-green-600 dark:text-green-400">{msg.replyTo.authorUsername}</p>
+            <p className="text-sm text-gray-600 dark:text-gray-300 truncate">{msg.replyTo.text}</p>
+          </div>
+        )}
+        <p className="pb-1" style={{ whiteSpace: 'pre-wrap' }}>{msg.text}</p>
+        <div className="text-right text-xs text-gray-400 dark:text-gray-500 mt-1">
+          {msg.editedAt && <span className="italic mr-1">edited</span>}
+          {new Date(msg.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const AdminChatViewer: React.FC<AdminChatViewerProps> = ({ adminUser, viewedUser, onBack }) => {
   const [selectedChatPartner, setSelectedChatPartner] = useState<Contact | null>(null);
@@ -99,7 +162,14 @@ const AdminContactList: React.FC<AdminContactListProps> = ({ viewedUser, onSelec
 const AdminChatThread: React.FC<AdminChatThreadProps> = ({ viewedUser, chatPartner, onBack }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const messagesEndRef = React.useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const adminChatContainerRef = useRef<HTMLElement>(null);
+  const [isCapturing, setIsCapturing] = useState(false);
+  const [captureStatus, setCaptureStatus] = useState('');
+  const { theme } = useTheme();
+
+  const [isDateModalOpen, setIsDateModalOpen] = useState(false);
+  const [filteredMessagesForCapture, setFilteredMessagesForCapture] = useState<Message[] | null>(null);
 
   const chatId = [viewedUser.uid, chatPartner.uid].sort().join('_');
 
@@ -121,6 +191,17 @@ const AdminChatThread: React.FC<AdminChatThreadProps> = ({ viewedUser, chatPartn
     messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
   }, [messages]);
 
+  const handleScrollToMessage = (messageId: string) => {
+    const element = document.getElementById(`message-${messageId}`);
+    if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        element.classList.add('highlight-message');
+        setTimeout(() => {
+            element.classList.remove('highlight-message');
+        }, 2000);
+    }
+  };
+
   const handleExportChat = () => {
     let chatContent = `Chat history between @${viewedUser.username} and @${chatPartner.username}\n`;
     chatContent += `Exported on: ${new Date().toLocaleString()}\n\n`;
@@ -128,7 +209,7 @@ const AdminChatThread: React.FC<AdminChatThreadProps> = ({ viewedUser, chatPartn
     messages.forEach(msg => {
       const senderUsername = msg.from === viewedUser.uid ? viewedUser.username : chatPartner.username;
       const timestamp = new Date(msg.ts).toLocaleString();
-      chatContent += `[${timestamp}] @${senderUsername}: ${msg.text}\n`;
+      chatContent += `[${timestamp}] @${senderUsername}: ${msg.isDeleted ? '(Message deleted)' : msg.text}\n`;
     });
 
     const blob = new Blob([chatContent], { type: 'text/plain;charset=utf-8' });
@@ -141,10 +222,99 @@ const AdminChatThread: React.FC<AdminChatThreadProps> = ({ viewedUser, chatPartn
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   };
+  
+  const captureChat = async () => {
+    const chatContainer = adminChatContainerRef.current;
+    if (!chatContainer) {
+      alert("Could not find chat container to capture.");
+      return;
+    }
+    setIsCapturing(true);
+
+    const originalHeight = chatContainer.style.height;
+    const originalOverflow = chatContainer.style.overflow;
+
+    try {
+      setCaptureStatus('Preparing for capture...');
+      
+      chatContainer.classList.add('hide-scrollbar-for-capture');
+      chatContainer.style.height = 'auto';
+      chatContainer.style.overflow = 'visible';
+      chatContainer.scrollTop = 0;
+
+      const exportHeader = document.createElement('div');
+      exportHeader.className = 'p-4 bg-gray-200 dark:bg-gray-800 text-gray-800 dark:text-gray-100 flex flex-col items-center border-b-2 border-gray-300 dark:border-gray-700 pb-4 mb-4';
+      exportHeader.innerHTML = `
+          <h2 class="text-xl font-bold">Chat between @${viewedUser.username} and @${chatPartner.username}</h2>
+          <p class="text-sm text-gray-500 dark:text-gray-400">Chat History</p>
+          <p class="text-xs text-gray-400 dark:text-gray-300 mt-1">Exported by Admin on ${new Date().toLocaleString()}</p>
+      `;
+      chatContainer.prepend(exportHeader);
+      
+      setCaptureStatus('Generating high-quality image...');
+      const canvas = await html2canvas(chatContainer, {
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: theme === 'dark' ? '#1f2937' : '#e5e7eb',
+        scale: window.devicePixelRatio,
+      });
+      
+      setCaptureStatus('Preparing download...');
+      const link = document.createElement('a');
+      link.download = `sameem-chat-${viewedUser.username}-${chatPartner.username}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      exportHeader.remove();
+      chatContainer.style.height = originalHeight;
+      chatContainer.style.overflow = originalOverflow;
+      chatContainer.classList.remove('hide-scrollbar-for-capture');
+      
+    } catch (error) {
+      console.error("Failed to capture chat:", error);
+      alert("Sorry, something went wrong while capturing the chat.");
+    } finally {
+      setIsCapturing(false);
+      setCaptureStatus('');
+      setFilteredMessagesForCapture(null);
+    }
+  };
+  
+  useEffect(() => {
+    if (filteredMessagesForCapture) {
+        // Use a timeout to ensure the DOM has re-rendered with the filtered messages
+        const timer = setTimeout(() => {
+            captureChat();
+        }, 100);
+        return () => clearTimeout(timer);
+    }
+  }, [filteredMessagesForCapture]);
+
+  const handleStartCapture = (startDate: string, endDate: string) => {
+    setIsDateModalOpen(false);
+
+    const start = new Date(startDate);
+    start.setHours(0, 0, 0, 0); // Start of the selected day
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59, 999); // End of the selected day
+
+    const filtered = messages.filter(msg => msg.ts >= start.getTime() && msg.ts <= end.getTime());
+    
+    if (filtered.length === 0) {
+        alert("No messages found in the selected date range.");
+        return;
+    }
+    
+    setFilteredMessagesForCapture(filtered);
+  };
+  
+  const messagesToDisplay = filteredMessagesForCapture || messages;
+
 
   return (
-    <div className="flex flex-col h-full bg-gray-200 dark:bg-gray-800">
-      <header className="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-100 p-3 flex items-center shadow-sm z-10">
+    <div className="flex flex-col h-full bg-gray-200 dark:bg-gray-800 relative">
+      <header className={`bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-100 p-3 flex items-center shadow-sm z-10 ${isCapturing ? 'invisible' : ''}`}>
         <button onClick={onBack} className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full">
           <BackIcon className="w-6 h-6" />
         </button>
@@ -153,36 +323,112 @@ const AdminChatThread: React.FC<AdminChatThreadProps> = ({ viewedUser, chatPartn
           <h2 className="font-bold text-lg leading-tight">{chatPartner.username}</h2>
           <p className="text-sm text-gray-500 dark:text-gray-400">Chat with {viewedUser.username}</p>
         </div>
-        <button onClick={handleExportChat} className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full" title="Export Chat">
+        <button onClick={handleExportChat} className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full" title="Export Chat as Text">
           <DownloadIcon className="w-6 h-6" />
+        </button>
+        <button onClick={() => setIsDateModalOpen(true)} className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full" title="Long Screenshot">
+          <CameraIcon className="w-6 h-6" />
         </button>
       </header>
       
-      <main className="flex-1 overflow-y-auto p-4 space-y-2">
+      <main ref={adminChatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-2">
         {isLoading ? (
           <div className="text-center p-4 text-gray-500 dark:text-gray-400">Loading messages...</div>
-        ) : messages.length === 0 ? (
-          <div className="text-center p-4 text-gray-500 dark:text-gray-400">No messages in this chat.</div>
+        ) : messagesToDisplay.length === 0 ? (
+          <div className="text-center p-4 text-gray-500 dark:text-gray-400">No messages in this chat{filteredMessagesForCapture ? ' for the selected date range' : ''}.</div>
         ) : (
-          messages.map((msg) => {
-            const isFromViewedUser = msg.from === viewedUser.uid;
+          messagesToDisplay.map((msg, index) => {
+            const messagesSource = filteredMessagesForCapture || messages;
+            const showDateSeparator = index === 0 || !isSameDay(new Date(messagesSource[index - 1].ts), new Date(msg.ts));
             return (
-              <div key={msg.id} className={`flex ${isFromViewedUser ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-xs md:max-w-md lg:max-w-lg px-3 py-2 rounded-lg shadow-sm relative ${isFromViewedUser ? 'bg-green-100 dark:bg-green-800' : 'bg-white dark:bg-gray-700'} text-gray-800 dark:text-gray-100`}>
-                  <p className="pb-1">{msg.text}</p>
-                  <div className="text-right text-xs text-gray-400 dark:text-gray-500 mt-1">
-                    {msg.editedAt && <span className="italic mr-1">edited</span>}
-                    {new Date(msg.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </div>
-                </div>
-              </div>
-            );
+                <React.Fragment key={msg.id}>
+                    {showDateSeparator && <DateSeparator date={new Date(msg.ts)} />}
+                    <AdminMessageBubble
+                        msg={msg}
+                        isFromViewedUser={msg.from === viewedUser.uid}
+                        onScrollToMessage={handleScrollToMessage}
+                    />
+                </React.Fragment>
+            )
           })
         )}
         <div ref={messagesEndRef} />
       </main>
+
+      {isCapturing && (
+        <div className="absolute inset-0 bg-black bg-opacity-60 flex flex-col items-center justify-center z-50 animation-fade-in">
+          <div className="w-8 h-8 border-4 border-t-transparent border-white rounded-full animate-spin"></div>
+          <p className="text-white mt-4 text-lg">{captureStatus || 'Preparing capture...'}</p>
+        </div>
+      )}
+      {isDateModalOpen && <DateRangeModal onClose={() => setIsDateModalOpen(false)} onCapture={handleStartCapture} />}
     </div>
   );
 };
+
+const Modal: React.FC<React.PropsWithChildren<{title: string, onClose: () => void}>> = ({ title, onClose, children }) => (
+    <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 animation-fade-in">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-sm animation-scale-in">
+            <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">{title}</h2>
+                <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-2xl font-bold">&times;</button>
+            </div>
+            {children}
+        </div>
+    </div>
+);
+
+const DateRangeModal: React.FC<{ onClose: () => void; onCapture: (start: string, end: string) => void; }> = ({ onClose, onCapture }) => {
+    const today = new Date().toISOString().split('T')[0];
+    const [startDate, setStartDate] = useState(today);
+    const [endDate, setEndDate] = useState(today);
+    const [error, setError] = useState('');
+
+    const handleCapture = () => {
+        if (!startDate || !endDate) {
+            setError('Please select both a start and end date.');
+            return;
+        }
+        if (new Date(startDate) > new Date(endDate)) {
+            setError('Start date cannot be after the end date.');
+            return;
+        }
+        setError('');
+        onCapture(startDate, endDate);
+    };
+    
+    return (
+        <Modal title="Select Date Range" onClose={onClose}>
+            <div className="space-y-4">
+                <div>
+                    <label htmlFor="startDate" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Start Date</label>
+                    <input
+                        type="date"
+                        id="startDate"
+                        value={startDate}
+                        onChange={(e) => setStartDate(e.target.value)}
+                        className="mt-1 block w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
+                    />
+                </div>
+                <div>
+                    <label htmlFor="endDate" className="block text-sm font-medium text-gray-700 dark:text-gray-300">End Date</label>
+                    <input
+                        type="date"
+                        id="endDate"
+                        value={endDate}
+                        onChange={(e) => setEndDate(e.target.value)}
+                        className="mt-1 block w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
+                    />
+                </div>
+            </div>
+            {error && <p className="text-red-500 text-sm mt-2 text-center">{error}</p>}
+            <div className="mt-6 flex justify-end space-x-2">
+                <button onClick={onClose} className="px-4 py-2 text-green-600 dark:text-green-400 rounded hover:bg-gray-100 dark:hover:bg-gray-700 font-semibold">Cancel</button>
+                <button onClick={handleCapture} className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 font-semibold">Capture</button>
+            </div>
+        </Modal>
+    );
+};
+
 
 export default AdminChatViewer;

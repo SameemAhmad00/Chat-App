@@ -52,6 +52,7 @@ export interface Message {
     authorUsername: string;
     text: string;
   };
+  isDeleted?: boolean;
 }
 
 export interface Call {
