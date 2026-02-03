@@ -291,17 +291,17 @@ const AdminScreen: React.FC<AdminScreenProps> = ({ currentUserProfile, onBack, o
                                           <td className="p-3 whitespace-nowrap">
                                               <div className="flex items-center">
                                                   <Avatar photoURL={user.photoURL} username={user.username || ''} className="w-10 h-10" />
-                                                  <div className="ml-3">
-                                                      <p className="font-bold text-gray-900 dark:text-gray-100">{user.name}</p>
+                                                  <div className="ml-3 min-w-0">
+                                                      <p className="font-bold text-gray-900 dark:text-gray-100 truncate">{user.name}</p>
                                                       {isEditingThisUser ? (
-                                                        <div className="flex items-center mt-1"><span className="text-sm text-gray-600 dark:text-gray-300">@</span><input type="text" value={editingUser.newUsername} onChange={(e) => setEditingUser({ ...editingUser, newUsername: e.target.value.toLowerCase().replace(/[^a-z0-9_.]/g, '') })} className="w-full p-1 text-sm bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500" autoFocus onKeyDown={(e) => e.key === 'Enter' && handleUpdateUsername(user)} /></div>
+                                                        <div className="flex items-center mt-1"><span className="text-sm text-gray-600 dark:text-gray-300">@</span><input type="text" value={editingUser.newUsername} onChange={(e) => setEditingUser({ ...editingUser, newUsername: e.target.value.toLowerCase().replace(/[^a-z0-9_.]/g, '') })} className="w-40 p-1 text-sm bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500" autoFocus onKeyDown={(e) => e.key === 'Enter' && handleUpdateUsername(user)} /></div>
                                                       ) : (
-                                                        <p className="text-sm text-gray-600 dark:text-gray-300">@{user.username}</p>
+                                                        <p className="text-sm text-gray-600 dark:text-gray-300 truncate">@{user.username}</p>
                                                       )}
                                                   </div>
                                               </div>
                                           </td>
-                                          <td className="p-3 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">{user.email}</td>
+                                          <td className="p-3 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300 truncate">{user.email}</td>
                                           <td className="p-3 whitespace-nowrap text-center">{user.isAdmin ? <CheckIcon className="w-5 h-5 text-green-500 mx-auto" /> : <CancelIcon className="w-5 h-5 text-red-500 mx-auto opacity-50" />}</td>
                                           <td className="p-3 whitespace-nowrap text-center">{user.isBlockedByAdmin ? <CheckIcon className="w-5 h-5 text-yellow-500 mx-auto" /> : <CancelIcon className="w-5 h-5 text-red-500 mx-auto opacity-50" />}</td>
                                           <td className="p-3 whitespace-nowrap text-sm font-medium">

@@ -53,7 +53,27 @@ export interface Message {
     text: string;
   };
   isDeleted?: boolean;
+  type?: 'game_invitation' | 'game_result';
+  gameType?: 'tictactoe';
+  invitationStatus?: 'pending' | 'accepted' | 'declined';
+  gameResult?: {
+    winnerUsername?: string;
+    result: 'win' | 'draw';
+  };
 }
+
+export interface TicTacToeGameState {
+  board: ('X' | 'O' | '')[];
+  turn: string; // UID
+  status: 'active' | 'won' | 'draw' | 'forfeited';
+  winner?: string | null; // UID or 'draw'
+  players: {
+    [uid: string]: 'X' | 'O';
+  };
+  startedBy: string; // UID
+  winningLine?: number[];
+}
+
 
 export interface Call {
   id:string;

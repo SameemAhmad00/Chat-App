@@ -163,7 +163,11 @@ export const setupCallListeners = (
       if (snapshot.exists()) {
         const answer = snapshot.val();
         if (pc.signalingState !== 'stable' && pc.remoteDescription === null) {
-          await pc.setRemoteDescription(new RTCSessionDescription(answer));
+          try {
+            await pc.setRemoteDescription(new RTCSessionDescription(answer));
+          } catch (e) {
+            console.error("Failed to set remote description from answer:", e);
+          }
         }
       }
     };

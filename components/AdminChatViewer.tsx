@@ -52,7 +52,7 @@ const AdminMessageBubble: React.FC<{
   if (msg.isDeleted) {
     return (
       <div id={`message-${msg.id}`} className={`flex items-start group chat-message ${isFromViewedUser ? 'justify-end' : 'justify-start'}`}>
-        <div className={`max-w-xs md:max-w-md lg:max-w-lg px-3 py-2 rounded-lg shadow-sm relative flex items-center bg-transparent`}>
+        <div className={`max-w-xs md:max-w-md lg:max-w-lg px-2 py-1 rounded-lg shadow-sm relative flex items-center bg-transparent`}>
            <ProhibitIcon className="w-5 h-5 text-gray-400 dark:text-gray-500 mr-2" />
            <p className="italic text-gray-500 dark:text-gray-400 pr-16 pb-1">This message was deleted</p>
            <div className={`absolute bottom-1 right-2 text-xs flex items-center text-gray-500 dark:text-gray-400`}>
@@ -69,7 +69,7 @@ const AdminMessageBubble: React.FC<{
       className={`flex items-start group chat-message ${isFromViewedUser ? 'justify-end' : 'justify-start'}`}
     >
       <div
-        className={`max-w-xs md:max-w-md lg:max-w-lg px-3 py-2 rounded-lg shadow-sm relative ${
+        className={`max-w-xs md:max-w-md lg:max-w-lg px-2 py-1 rounded-lg shadow-sm relative ${
           isFromViewedUser ? 'bg-green-100 dark:bg-green-800' : 'bg-white dark:bg-gray-700'
         } text-gray-800 dark:text-gray-100`}
       >
@@ -77,7 +77,7 @@ const AdminMessageBubble: React.FC<{
           <button
             onClick={() => onScrollToMessage(msg.replyTo.messageId)}
             aria-label={`Replying to: ${msg.replyTo.text}`}
-            className="mb-2 p-2 w-full text-left border-l-2 border-green-500 dark:border-green-400 bg-black/5 dark:bg-white/5 rounded-md cursor-pointer"
+            className="mb-1 px-2 py-1 w-full text-left border-l-2 border-green-500 dark:border-green-400 bg-black/5 dark:bg-white/5 rounded-md cursor-pointer"
           >
             <p className="font-bold text-sm text-green-600 dark:text-green-400">{msg.replyTo.authorUsername}</p>
             <p className="text-sm text-gray-600 dark:text-gray-300 truncate">{msg.replyTo.text}</p>
@@ -266,7 +266,7 @@ const AdminChatThread: React.FC<AdminChatThreadProps> = ({ viewedUser, chatPartn
       const exportHeader = document.createElement('div');
       exportHeader.className = 'p-4 bg-gray-200 dark:bg-gray-800 text-gray-800 dark:text-gray-100 flex flex-col items-center border-b-2 border-gray-300 dark:border-gray-700 pb-4 mb-4';
       exportHeader.innerHTML = `
-          <h2 class="text-xl font-bold">Chat between @${viewedUser.username} and @${chatPartner.username}</h2>
+          <h2 class="text-xl font-bold text-center" style="word-break: break-word;">Chat between @${viewedUser.username} and @${chatPartner.username}</h2>
           <p class="text-sm text-gray-500 dark:text-gray-400">Chat History</p>
           <p class="text-xs text-gray-400 dark:text-gray-300 mt-1">Exported by Admin on ${new Date().toLocaleString()}</p>
       `;

@@ -108,3 +108,6 @@ export const ProhibitIcon: React.FC<IconProps> = ({ className, style }) => (
         <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zM15.59 7L7 15.59 8.41 17 17 8.41 15.59 7z"/>
     </svg>
 );
+export const GameIcon: React.FC<IconProps> = ({ className, style }) => (
+  <svg className={className} style={style} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.5 6.5l-3.5-3.5-3.5 3.5h2.5v4h2v-4h2.5zm-9 11l3.5 3.5 3.5-3.5h-2.5v-4h-2v4h-2.5zM6 13h2v-2H6v2zm10 0h2v-2h-2v2zM3 3v18h18V3H3zm16 16H5V5h14v14z"/></svg>
+);
