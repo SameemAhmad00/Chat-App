@@ -111,3 +111,12 @@ export const ProhibitIcon: React.FC<IconProps> = ({ className, style }) => (
 export const GameIcon: React.FC<IconProps> = ({ className, style }) => (
   <svg className={className} style={style} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.5 6.5l-3.5-3.5-3.5 3.5h2.5v4h2v-4h2.5zm-9 11l3.5 3.5 3.5-3.5h-2.5v-4h-2v4h-2.5zM6 13h2v-2H6v2zm10 0h2v-2h-2v2zM3 3v18h18V3H3zm16 16H5V5h14v14z"/></svg>
 );
+export const FlagIcon: React.FC<IconProps> = ({ className, style }) => (
+  <svg className={className} style={style} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+);
+export const SearchIcon: React.FC<IconProps> = ({ className, style }) => (
+  <svg className={className} style={style} fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+);
+export const ExclamationTriangleIcon: React.FC<IconProps> = ({ className, style }) => (
+  <svg className={className} style={style} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+);

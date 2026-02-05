@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import firebase from 'firebase/compat/app';
 import { db } from '../services/firebase';
 import type { UserProfile, Contact, Message, TicTacToeGameState } from '../types';
-import { BackIcon, PhoneIcon, VideoIcon, SendIcon, MoreIcon, CheckIcon, PencilIcon, CancelIcon, ReplyIcon, TrashIcon, ProhibitIcon, GameIcon } from './Icons';
+import { BackIcon, PhoneIcon, VideoIcon, SendIcon, MoreIcon, CheckIcon, PencilIcon, CancelIcon, ReplyIcon, TrashIcon, ProhibitIcon, GameIcon, FlagIcon } from './Icons';
 import { formatPresenceTimestamp } from '../utils/format';
 import { checkWinner } from '../utils/game';
 import Avatar from './Avatar';
@@ -66,10 +66,11 @@ const MessageBubble: React.FC<{
   onStartEdit: (msg: Message) => void;
   onStartReply: (msg: Message) => void;
   onDelete: (msg: Message) => void;
+  onReport: (msg: Message) => void;
   onScrollToMessage: (messageId: string) => void;
   onAcceptGameInvite: (msg: Message) => void;
   isGameActive: boolean;
-}> = ({ msg, isOwnMessage, onStartEdit, onStartReply, onDelete, onScrollToMessage, onAcceptGameInvite, isGameActive }) => {
+}> = ({ msg, isOwnMessage, onStartEdit, onStartReply, onDelete, onReport, onScrollToMessage, onAcceptGameInvite, isGameActive }) => {
   const [showMenu, setShowMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const [swipeX, setSwipeX] = useState(0);
@@ -204,7 +205,7 @@ const MessageBubble: React.FC<{
   return (
     <div
       id={`message-${msg.id}`}
-      className={`flex items-start group chat-message ${isOwnMessage ? 'justify-end' : 'justify-start'} ${!isOwnMessage ? 'animate-incoming-message' : ''}`}
+      className={`flex items-start group chat-message ${isOwnMessage ? 'justify-end animate-outgoing-message' : 'justify-start animate-incoming-message'}`}
       tabIndex={msg.isDeleted ? undefined : 0}
       onKeyDown={handleKeyDown}
       aria-haspopup="true"
@@ -288,6 +289,16 @@ const MessageBubble: React.FC<{
                     Delete
                   </button>
                 )}
+                {!isOwnMessage && (
+                   <button
+                    role="menuitem"
+                    onClick={() => { onReport(msg); setShowMenu(false); }}
+                    className="flex items-center w-full text-left px-4 py-2 text-sm text-yellow-600 dark:text-yellow-400 hover:bg-gray-100 dark:hover:bg-gray-500"
+                  >
+                    <FlagIcon className="w-4 h-4 mr-2" />
+                    Report
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -312,6 +323,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ user, profile, partner, onBack,
   const [newMessage, setNewMessage] = useState('');
   const [editingMessage, setEditingMessage] = useState<Message | null>(null);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const [reportingMessage, setReportingMessage] = useState<Message | null>(null);
   const [game, setGame] = useState<TicTacToeGameState | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLElement>(null);
@@ -610,6 +622,38 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ user, profile, partner, onBack,
         });
     }
   };
+  
+  const handleReportMessage = (msg: Message) => {
+    setReportingMessage(msg);
+  };
+  
+  const handleReportSubmit = async (reason: string) => {
+    if (!reportingMessage) return;
+    
+    const reportData = {
+        chatId: chatId,
+        messageId: reportingMessage.id,
+        messageText: reportingMessage.text,
+        reportedUser: {
+            uid: partner.uid,
+            username: partner.username,
+            photoURL: partner.photoURL || null
+        },
+        reporterUser: {
+            uid: user.uid,
+            username: profile.username,
+        },
+        reason: reason,
+        ts: firebase.database.ServerValue.TIMESTAMP,
+        status: 'pending',
+    };
+    
+    await db.ref('reports').push(reportData);
+    
+    alert('Thank you for your report. An admin will review it shortly.');
+    setReportingMessage(null);
+  };
+
 
   const handleScrollToMessage = (messageId: string) => {
     const element = document.getElementById(`message-${messageId}`);
@@ -672,35 +716,38 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ user, profile, partner, onBack,
   return (
     <div className="flex flex-col h-full bg-gray-200 dark:bg-gray-800 relative">
       <header className={`bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-100 p-3 flex items-center shadow-sm z-30`}>
-        <button onClick={onBack} aria-label="Back to chats" className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full"><BackIcon className="w-6 h-6" /></button>
-        <Avatar photoURL={partner.photoURL} username={partner.username} className="w-10 h-10 ml-2" />
-        <div className="flex-1 ml-3">
-          <h2 className="font-bold text-lg leading-tight">{partner.username}</h2>
-          {renderPresenceHeader()}
-        </div>
-        <button onClick={() => onStartCall(partner, 'voice')} aria-label={`Start voice call with ${partner.username}`} className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full"><PhoneIcon className="w-6 h-6" /></button>
-        <button onClick={() => onStartCall(partner, 'video')} aria-label={`Start video call with ${partner.username}`} className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full"><VideoIcon className="w-6 h-6" /></button>
-        <div className="relative">
-          <button onClick={() => setMenuOpen(!isMenuOpen)} aria-label="More options" aria-haspopup="true" aria-expanded={isMenuOpen} className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full"><MoreIcon className="w-6 h-6" /></button>
-          {isMenuOpen && (
-              <div role="menu" aria-orientation="vertical" className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-700 rounded-md shadow-lg py-1 z-40 animation-scale-in origin-top-right">
-                  <button role="menuitem" onClick={handleSendGameInvite} className="flex items-center w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600">
-                      <GameIcon className="w-5 h-5 mr-2" /> Play Tic-Tac-Toe
-                  </button>
-                  <button role="menuitem" onClick={handleBlockUser} className="block w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600">
-                      {profile.blocked && profile.blocked[partner.uid] ? 'Unblock User' : 'Block User'}
-                  </button>
-                  <button role="menuitem" onClick={handleDeleteChat} className="block w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-gray-100 dark:hover:bg-gray-600">
-                      Delete Chat
-                  </button>
-              </div>
-          )}
-        </div>
+          <>
+            <button onClick={onBack} aria-label="Back to chats" className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full"><BackIcon className="w-6 h-6" /></button>
+            <Avatar photoURL={partner.photoURL} username={partner.username} className="w-10 h-10 ml-2" />
+            <div className="flex-1 ml-3">
+              <h2 className="font-bold text-lg leading-tight">{partner.username}</h2>
+              {renderPresenceHeader()}
+            </div>
+            <button onClick={() => onStartCall(partner, 'voice')} aria-label={`Start voice call with ${partner.username}`} className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full"><PhoneIcon className="w-6 h-6" /></button>
+            <button onClick={() => onStartCall(partner, 'video')} aria-label={`Start video call with ${partner.username}`} className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full"><VideoIcon className="w-6 h-6" /></button>
+            <div className="relative">
+              <button onClick={() => setMenuOpen(!isMenuOpen)} aria-label="More options" aria-haspopup="true" aria-expanded={isMenuOpen} className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full"><MoreIcon className="w-6 h-6" /></button>
+              {isMenuOpen && (
+                  <div role="menu" aria-orientation="vertical" className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-700 rounded-md shadow-lg py-1 z-40 animation-scale-in origin-top-right">
+                      <button role="menuitem" onClick={handleSendGameInvite} className="flex items-center w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600">
+                          <GameIcon className="w-5 h-5 mr-2" /> Play Tic-Tac-Toe
+                      </button>
+                      <button role="menuitem" onClick={handleBlockUser} className="block w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600">
+                          {profile.blocked && profile.blocked[partner.uid] ? 'Unblock User' : 'Block User'}
+                      </button>
+                      <button role="menuitem" onClick={handleDeleteChat} className="block w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-gray-100 dark:hover:bg-gray-600">
+                          Delete Chat
+                      </button>
+                  </div>
+              )}
+            </div>
+          </>
       </header>
       
       <main ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-2 chat-message-list">
         {messages.map((msg, index) => {
-            const showDateSeparator = index === 0 || !isSameDay(new Date(messages[index - 1].ts), new Date(msg.ts));
+            const prevMsg = messages[index - 1];
+            const showDateSeparator = (index === 0 || !isSameDay(new Date(prevMsg.ts), new Date(msg.ts)));
             return (
                 <React.Fragment key={msg.id}>
                     {showDateSeparator && <DateSeparator date={new Date(msg.ts)} />}
@@ -710,6 +757,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ user, profile, partner, onBack,
                         onStartEdit={handleStartEdit}
                         onStartReply={handleStartReply}
                         onDelete={handleDeleteMessage}
+                        onReport={handleReportMessage}
                         onScrollToMessage={handleScrollToMessage}
                         onAcceptGameInvite={handleAcceptGameInvite}
                         isGameActive={!!game && game.status === 'active'}
@@ -735,6 +783,9 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ user, profile, partner, onBack,
       {game && (game.status === 'active' || game.status === 'won' || game.status === 'draw' || game.status === 'forfeited') && (
         <GameModal game={game} user={profile} partner={partner} onMakeMove={handleMakeMove} onForfeit={handleForfeit} onClose={handleCloseGameModal} />
       )}
+      
+      {reportingMessage && <ReportModal message={reportingMessage} onClose={() => setReportingMessage(null)} onSubmit={handleReportSubmit} />}
+
 
       <div className={`bg-gray-100 dark:bg-gray-900 p-3 border-t border-gray-200 dark:border-gray-700 transition-all duration-200`}>
         {replyingTo && (
@@ -774,7 +825,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ user, profile, partner, onBack,
           <button
             type="submit"
             aria-label={editingMessage ? "Save changes" : "Send message"}
-            className="ml-3 p-3 bg-green-500 text-white rounded-full transition-all duration-200 ease-in-out transform hover:bg-green-600 disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:scale-90"
+            className="ml-3 p-3 bg-green-500 text-white rounded-full transition-all duration-200 ease-in-out transform hover:bg-green-600 hover:scale-105 disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:scale-90"
             disabled={!newMessage.trim()}
           >
             <SendIcon className="w-6 h-6" />
@@ -784,5 +835,48 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ user, profile, partner, onBack,
     </div>
   );
 };
+
+const ReportModal: React.FC<{ message: Message; onClose: () => void; onSubmit: (reason: string) => void }> = ({ message, onClose, onSubmit }) => {
+    const [reason, setReason] = useState('');
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+    
+    useEffect(() => {
+        textareaRef.current?.focus();
+    }, []);
+
+    const handleSubmit = () => {
+        if (reason.trim()) {
+            onSubmit(reason.trim());
+        }
+    };
+    
+    return (
+        <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 animation-fade-in" role="dialog" aria-modal="true" aria-labelledby="report-modal-title">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-sm animation-scale-in">
+                <h2 id="report-modal-title" className="text-xl font-bold text-gray-800 dark:text-gray-100">Report Message</h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Please provide a reason for reporting this message.</p>
+                
+                <div className="my-4 p-2 bg-gray-100 dark:bg-gray-700 rounded-md">
+                    <p className="text-sm text-gray-600 dark:text-gray-300 italic truncate">"{message.text}"</p>
+                </div>
+                
+                <textarea
+                    ref={textareaRef}
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                    placeholder="E.g., harassment, spam, inappropriate content..."
+                    aria-label="Reason for reporting"
+                    className="w-full h-24 p-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 text-gray-900 dark:text-white"
+                />
+                
+                <div className="mt-4 flex justify-end space-x-2">
+                    <button onClick={onClose} className="px-4 py-2 text-green-600 dark:text-green-400 rounded hover:bg-gray-100 dark:hover:bg-gray-700 font-semibold">Cancel</button>
+                    <button onClick={handleSubmit} disabled={!reason.trim()} className="px-4 py-2 bg-yellow-500 text-white rounded hover:bg-yellow-600 font-semibold disabled:bg-gray-400 dark:disabled:bg-gray-600">Submit Report</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 
 export default ChatScreen;

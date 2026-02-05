@@ -94,3 +94,15 @@ export interface CallRecord {
   ts: number;
   duration?: number; // in seconds
 }
+
+export interface Report {
+  id: string;
+  chatId: string;
+  messageId: string;
+  messageText: string;
+  reportedUser: { uid: string; username: string; photoURL?: string };
+  reporterUser: { uid: string; username: string };
+  reason: string;
+  ts: number;
+  status: 'pending' | 'dismissed' | 'action_taken';
+}

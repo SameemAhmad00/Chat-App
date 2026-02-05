@@ -1,10 +1,9 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 // FIX: Use firebase v9 compat imports to resolve module errors.
 import firebase from 'firebase/compat/app';
 import { auth, db, storage } from '../services/firebase';
 import type { UserProfile, Contact, FriendRequest, Call, EnrichedContact, Message, CallRecord } from '../types';
-import { MenuIcon, ChatIcon, CogIcon, ArrowUpRightIcon, ArrowDownLeftIcon, VideoIcon, PhoneIcon, ShieldCheckIcon, DownloadIcon } from './Icons';
+import { MenuIcon, ChatIcon, CogIcon, ArrowUpRightIcon, ArrowDownLeftIcon, VideoIcon, PhoneIcon, ShieldCheckIcon, DownloadIcon, TrashIcon, ExclamationTriangleIcon } from './Icons';
 import { formatPresenceTimestamp, formatTimestamp, formatCallDuration } from '../utils/format';
 import Avatar from './Avatar';
 import { useTheme } from '../contexts/ThemeContext';
@@ -34,6 +33,7 @@ const MainScreen: React.FC<MainScreenProps> = ({ user, profile, onNavigate, onSt
   const [isAddFriendModalOpen, setAddFriendModalOpen] = useState(false);
   const [isProfileModalOpen, setProfileModalOpen] = useState(false);
   const [selectedCallLog, setSelectedCallLog] = useState<CallRecord | null>(null);
+  const [deletingCallLog, setDeletingCallLog] = useState<CallRecord | null>(null);
 
   useEffect(() => {
     // --- Existing listeners for contacts and requests ---
@@ -118,6 +118,18 @@ const MainScreen: React.FC<MainScreenProps> = ({ user, profile, onNavigate, onSt
     };
   }, [user.uid]);
   
+  const handleConfirmDeleteCallLog = async () => {
+    if (!deletingCallLog || !user) return;
+    try {
+      await db.ref(`callLogs/${user.uid}/${deletingCallLog.id}`).remove();
+      setDeletingCallLog(null);
+    } catch (error) {
+      console.error("Error deleting call log:", error);
+      alert("Failed to delete call log. Please try again.");
+      setDeletingCallLog(null);
+    }
+  };
+
   const renderTabContent = () => {
     switch (activeTab) {
       case 'chats':
@@ -125,7 +137,7 @@ const MainScreen: React.FC<MainScreenProps> = ({ user, profile, onNavigate, onSt
       case 'requests':
         return <RequestList requests={requests} user={user} profile={profile} />;
       case 'calls':
-        return <CallHistory logs={callLogs} onLogClick={setSelectedCallLog} />;
+        return <CallHistory logs={callLogs} onLogClick={setSelectedCallLog} onDeleteClick={setDeletingCallLog} />;
       default:
         return null;
     }
@@ -167,6 +179,7 @@ const MainScreen: React.FC<MainScreenProps> = ({ user, profile, onNavigate, onSt
       {isProfileModalOpen && <ProfileModal user={user} profile={profile} onClose={() => setProfileModalOpen(false)} onNavigate={onNavigate} installPrompt={installPrompt} onInstallClick={onInstallClick} />}
       {incomingCall && <IncomingCallModal call={incomingCall} onAccept={onAcceptCall} onReject={onRejectCall} />}
       {selectedCallLog && <CallLogDetailModal log={selectedCallLog} onClose={() => setSelectedCallLog(null)} />}
+      {deletingCallLog && <DeleteCallLogModal log={deletingCallLog} onConfirm={handleConfirmDeleteCallLog} onCancel={() => setDeletingCallLog(null)} />}
     </div>
   );
 };
@@ -270,7 +283,7 @@ const RequestList: React.FC<{requests: FriendRequest[], user: firebase.User, pro
     );
 };
 
-const CallHistory: React.FC<{ logs: CallRecord[]; onLogClick: (log: CallRecord) => void }> = ({ logs, onLogClick }) => {
+const CallHistory: React.FC<{ logs: CallRecord[]; onLogClick: (log: CallRecord) => void; onDeleteClick: (log: CallRecord) => void; }> = ({ logs, onLogClick, onDeleteClick }) => {
     if (logs.length === 0) {
         return <div className="text-center text-gray-500 dark:text-gray-400 mt-10 p-4">No recent calls.</div>;
     }
@@ -278,8 +291,8 @@ const CallHistory: React.FC<{ logs: CallRecord[]; onLogClick: (log: CallRecord) 
     return (
         <ul className="divide-y divide-gray-100 dark:divide-gray-700">
             {logs.map(log => (
-                <li key={log.id} className="hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer" onClick={() => onLogClick(log)}>
-                    <div className="flex items-center p-3">
+                <li key={log.id} className="hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center justify-between">
+                    <div className="flex items-center p-3 flex-1 min-w-0 cursor-pointer" onClick={() => onLogClick(log)}>
                         <Avatar photoURL={log.partner.photoURL} username={log.partner.username} />
                         <div className="flex-1 ml-4 overflow-hidden">
                             <div className="flex justify-between items-center">
@@ -302,6 +315,15 @@ const CallHistory: React.FC<{ logs: CallRecord[]; onLogClick: (log: CallRecord) 
                                 )}
                             </div>
                         </div>
+                    </div>
+                    <div className="pr-3">
+                      <button 
+                          onClick={() => onDeleteClick(log)} 
+                          className="p-2 text-gray-500 dark:text-gray-400 rounded-full hover:bg-red-100 dark:hover:bg-gray-600 hover:text-red-500"
+                          aria-label={`Delete call log with ${log.partner.username}`}
+                      >
+                          <TrashIcon className="w-5 h-5" />
+                      </button>
                     </div>
                 </li>
             ))}
@@ -543,6 +565,24 @@ const CallLogDetailModal: React.FC<{ log: CallRecord, onClose: () => void }> = (
     );
 }
 
+const DeleteCallLogModal: React.FC<{ log: CallRecord, onConfirm: () => void, onCancel: () => void }> = ({ log, onConfirm, onCancel }) => {
+    return (
+        <Modal title="Delete Call Record" onClose={onCancel}>
+            <div className="flex flex-col items-center text-center">
+                <ExclamationTriangleIcon className="w-12 h-12 text-red-500 mb-4" />
+                <p className="text-gray-700 dark:text-gray-300">
+                    Are you sure you want to permanently delete this call record with <span className="font-bold">@{log.partner.username}</span>?
+                </p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">This action cannot be undone.</p>
+            </div>
+            <div className="mt-6 flex justify-end space-x-2">
+                <button onClick={onCancel} className="px-4 py-2 text-green-600 dark:text-green-400 rounded hover:bg-gray-100 dark:hover:bg-gray-700 font-semibold">Cancel</button>
+                <button onClick={onConfirm} className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 font-semibold">Delete</button>
+            </div>
+        </Modal>
+    );
+};
+
 
 const Modal: React.FC<React.PropsWithChildren<{title: string, onClose: () => void}>> = ({ title, onClose, children }) => {
     const modalRef = useRef<HTMLDivElement>(null);
@@ -595,6 +635,7 @@ const Modal: React.FC<React.PropsWithChildren<{title: string, onClose: () => voi
             <div ref={modalRef} className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-sm animation-scale-in">
                 <div className="flex justify-between items-center mb-4">
                     <h2 id="modal-title" className="text-xl font-bold text-gray-800 dark:text-gray-100">{title}</h2>
+                    {/* FIX: Remove typo parentheses from close icon. */}
                     <button onClick={onClose} aria-label="Close" className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-2xl font-bold">&times;</button>
                 </div>
                 {children}

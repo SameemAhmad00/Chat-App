@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 // FIX: Use firebase v9 compat imports to resolve module errors.
 import { db } from '../services/firebase';
 import type { UserProfile, Contact, Message } from '../types';
-import { BackIcon, DownloadIcon, CameraIcon, ProhibitIcon } from './Icons';
+import { BackIcon, DownloadIcon, CameraIcon, ProhibitIcon, SearchIcon, ArrowUpIcon, ArrowDownIcon, CancelIcon, GameIcon } from './Icons';
 import Avatar from './Avatar';
 import { useTheme } from '../contexts/ThemeContext';
 
@@ -39,16 +39,77 @@ const isSameDay = (d1: Date, d2: Date) => {
 const DateSeparator: React.FC<{ date: Date }> = ({ date }) => (
   <div className="flex justify-center my-3">
     <span className="bg-gray-300 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs font-semibold px-3 py-1 rounded-full shadow-sm">
-      {date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}
+      {date.toLocaleString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}
     </span>
   </div>
 );
+
+const HighlightedText: React.FC<{ text: string; highlight: string }> = ({ text, highlight }) => {
+  if (!highlight.trim()) {
+    return <>{text}</>;
+  }
+  const regex = new RegExp(`(${highlight.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')})`, 'gi');
+  const parts = text.split(regex);
+  return (
+    <>
+      {parts.map((part, i) =>
+        part.toLowerCase() === highlight.toLowerCase() ? (
+          <mark key={i} className="bg-yellow-300 dark:bg-yellow-500 text-black rounded px-0.5">
+            {part}
+          </mark>
+        ) : (
+          part
+        )
+      )}
+    </>
+  );
+};
 
 const AdminMessageBubble: React.FC<{
   msg: Message;
   isFromViewedUser: boolean;
   onScrollToMessage: (messageId: string) => void;
-}> = ({ msg, isFromViewedUser, onScrollToMessage }) => {
+  viewedUser: UserProfile;
+  chatPartner: Contact;
+  searchQuery?: string;
+  isCurrentSearchResult?: boolean;
+}> = ({ msg, isFromViewedUser, onScrollToMessage, viewedUser, chatPartner, searchQuery, isCurrentSearchResult }) => {
+  
+  const renderSpecialMessage = () => {
+    if (msg.type === 'game_invitation') {
+        const senderUsername = msg.from === viewedUser.uid ? viewedUser.username : chatPartner.username;
+        return (
+             <div className={`flex items-center p-3 rounded-lg ${isFromViewedUser ? 'bg-green-100 dark:bg-green-800' : 'bg-white dark:bg-gray-700'}`}>
+                <GameIcon className="w-10 h-10 text-green-500" />
+                <div className="ml-3">
+                    <p className="font-semibold text-gray-800 dark:text-gray-100">{senderUsername} sent a game invite.</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Status: {msg.invitationStatus || 'pending'}</p>
+                </div>
+            </div>
+        );
+    }
+    if (msg.type === 'game_result') {
+        let resultText = '';
+        if (msg.gameResult?.result === 'draw') {
+            resultText = "The Tic-Tac-Toe game was a draw.";
+        } else {
+            resultText = `@${msg.gameResult.winnerUsername} won the Tic-Tac-Toe game!`;
+        }
+        return (
+             <div className="flex justify-center my-3">
+                <span className="bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-sm font-semibold px-4 py-2 rounded-full shadow-sm text-center">
+                   <GameIcon className="w-5 h-5 inline-block mr-2" />
+                   {resultText}
+                </span>
+            </div>
+        );
+    }
+    return null;
+  }
+
+  const specialMessage = renderSpecialMessage();
+  if (specialMessage) return specialMessage;
+  
   if (msg.isDeleted) {
     return (
       <div id={`message-${msg.id}`} className={`flex items-start group chat-message ${isFromViewedUser ? 'justify-end' : 'justify-start'}`}>
@@ -66,7 +127,7 @@ const AdminMessageBubble: React.FC<{
   return (
     <div
       id={`message-${msg.id}`}
-      className={`flex items-start group chat-message ${isFromViewedUser ? 'justify-end' : 'justify-start'}`}
+      className={`flex items-start group chat-message ${isFromViewedUser ? 'justify-end' : 'justify-start'} ${isCurrentSearchResult ? 'highlight-search-result-active' : ''}`}
     >
       <div
         className={`max-w-xs md:max-w-md lg:max-w-lg px-2 py-1 rounded-lg shadow-sm relative ${
@@ -84,7 +145,9 @@ const AdminMessageBubble: React.FC<{
           </button>
         )}
         <div className="flex flex-wrap items-baseline" style={{ wordBreak: 'break-word' }}>
-          <p className="mr-2" style={{ whiteSpace: 'pre-wrap' }}>{msg.text}</p>
+          <p className="mr-2" style={{ whiteSpace: 'pre-wrap' }}>
+             <HighlightedText text={msg.text} highlight={searchQuery || ''} />
+          </p>
           <div className="flex items-center text-xs text-gray-600 dark:text-gray-300 ml-auto self-end shrink-0">
             {msg.editedAt && <span className="mr-1 italic">edited</span>}
             <span className="mr-1">{new Date(msg.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}</span>
@@ -180,6 +243,11 @@ const AdminChatThread: React.FC<AdminChatThreadProps> = ({ viewedUser, chatPartn
   const [isDateModalOpen, setIsDateModalOpen] = useState(false);
   const [filteredMessagesForCapture, setFilteredMessagesForCapture] = useState<Message[] | null>(null);
 
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<Message[]>([]);
+  const [currentResultIndex, setCurrentResultIndex] = useState(-1);
+
   const chatId = [viewedUser.uid, chatPartner.uid].sort().join('_');
 
   useEffect(() => {
@@ -197,17 +265,61 @@ const AdminChatThread: React.FC<AdminChatThreadProps> = ({ viewedUser, chatPartn
   }, [chatId]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
-  }, [messages]);
+    if (!isSearching) {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+    }
+  }, [messages, isSearching]);
 
   const handleScrollToMessage = (messageId: string) => {
     const element = document.getElementById(`message-${messageId}`);
     if (element) {
         element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        element.classList.add('highlight-message');
-        setTimeout(() => {
-            element.classList.remove('highlight-message');
-        }, 2000);
+        if(!isSearching) {
+            element.classList.add('highlight-message');
+            setTimeout(() => {
+                element.classList.remove('highlight-message');
+            }, 2000);
+        }
+    }
+  };
+
+  useEffect(() => {
+    if (isSearching && currentResultIndex > -1 && searchResults[currentResultIndex]) {
+      handleScrollToMessage(searchResults[currentResultIndex].id);
+    }
+  }, [currentResultIndex, searchResults, isSearching]);
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const query = e.target.value;
+    setSearchQuery(query);
+    if (query.trim() === '') {
+      setSearchResults([]);
+      setCurrentResultIndex(-1);
+    } else {
+      const results = messages.filter(
+        msg => !msg.isDeleted && msg.text.toLowerCase().includes(query.toLowerCase())
+      );
+      setSearchResults(results);
+      setCurrentResultIndex(results.length > 0 ? results.length - 1 : -1);
+    }
+  };
+  
+  const handleCloseSearch = () => {
+    setIsSearching(false);
+    setSearchQuery('');
+    setSearchResults([]);
+    setCurrentResultIndex(-1);
+  };
+
+  const navigateToNextResult = () => {
+    if (currentResultIndex < searchResults.length - 1) {
+      setCurrentResultIndex(prev => prev + 1);
+    }
+  };
+
+  const navigateToPreviousResult = () => {
+    if (currentResultIndex > 0) {
+      setCurrentResultIndex(prev => prev - 1);
     }
   };
 
@@ -330,26 +442,65 @@ const AdminChatThread: React.FC<AdminChatThreadProps> = ({ viewedUser, chatPartn
     setFilteredMessagesForCapture(filtered);
   };
   
-  const messagesToDisplay = filteredMessagesForCapture || messages;
+  let messagesToDisplay = filteredMessagesForCapture || messages;
+  if (searchQuery) {
+    messagesToDisplay = searchResults;
+  }
 
 
   return (
     <div className="flex flex-col h-full bg-gray-200 dark:bg-gray-800 relative">
       <header className={`bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-100 p-3 flex items-center shadow-sm z-10 ${isCapturing ? 'invisible' : ''}`}>
-        <button onClick={onBack} aria-label="Back to contact list" className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full">
-          <BackIcon className="w-6 h-6" />
-        </button>
-        <Avatar photoURL={chatPartner.photoURL} username={chatPartner.username} className="w-10 h-10 ml-2" />
-        <div className="flex-1 ml-3">
-          <h2 className="font-bold text-lg leading-tight">{chatPartner.username}</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Chat with {viewedUser.username}</p>
-        </div>
-        <button onClick={handleExportChat} className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full" aria-label="Export Chat as Text">
-          <DownloadIcon className="w-6 h-6" />
-        </button>
-        <button onClick={() => setIsDateModalOpen(true)} className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full" aria-label="Capture screenshot of chat">
-          <CameraIcon className="w-6 h-6" />
-        </button>
+        {isSearching ? (
+          <div className="flex items-center w-full animation-fade-in">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={handleSearchChange}
+              placeholder="Search..."
+              className="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 rounded-full focus:outline-none text-sm"
+              autoFocus
+            />
+            {searchResults.length > 0 ? (
+              <span className="text-sm text-gray-500 dark:text-gray-400 mx-2 shrink-0">
+                {currentResultIndex + 1} / {searchResults.length}
+              </span>
+            ) : searchQuery ? (
+                 <span className="text-sm text-gray-500 dark:text-gray-400 mx-2 shrink-0">
+                    No results
+                </span>
+            ) : null}
+            <button onClick={navigateToPreviousResult} disabled={currentResultIndex <= 0} className="p-2 text-gray-600 dark:text-gray-400 disabled:opacity-30" aria-label="Previous result">
+              <ArrowUpIcon className="w-6 h-6" />
+            </button>
+            <button onClick={navigateToNextResult} disabled={currentResultIndex >= searchResults.length - 1} className="p-2 text-gray-600 dark:text-gray-400 disabled:opacity-30" aria-label="Next result">
+              <ArrowDownIcon className="w-6 h-6" />
+            </button>
+            <button onClick={handleCloseSearch} className="p-2 text-gray-600 dark:text-gray-400" aria-label="Close search">
+              <CancelIcon className="w-6 h-6" />
+            </button>
+          </div>
+        ) : (
+          <>
+            <button onClick={onBack} aria-label="Back to contact list" className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full">
+              <BackIcon className="w-6 h-6" />
+            </button>
+            <Avatar photoURL={chatPartner.photoURL} username={chatPartner.username} className="w-10 h-10 ml-2" />
+            <div className="flex-1 ml-3">
+              <h2 className="font-bold text-lg leading-tight">{chatPartner.username}</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Chat with {viewedUser.username}</p>
+            </div>
+            <button onClick={() => setIsSearching(true)} className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full" aria-label="Search Messages">
+              <SearchIcon className="w-6 h-6" />
+            </button>
+            <button onClick={handleExportChat} className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full" aria-label="Export Chat as Text">
+              <DownloadIcon className="w-6 h-6" />
+            </button>
+            <button onClick={() => setIsDateModalOpen(true)} className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full" aria-label="Capture screenshot of chat">
+              <CameraIcon className="w-6 h-6" />
+            </button>
+          </>
+        )}
       </header>
       
       <main ref={adminChatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-2">
@@ -359,8 +510,10 @@ const AdminChatThread: React.FC<AdminChatThreadProps> = ({ viewedUser, chatPartn
           <div className="text-center p-4 text-gray-500 dark:text-gray-400">No messages in this chat{filteredMessagesForCapture ? ' for the selected date range' : ''}.</div>
         ) : (
           messagesToDisplay.map((msg, index) => {
-            const messagesSource = filteredMessagesForCapture || messages;
-            const showDateSeparator = index === 0 || !isSameDay(new Date(messagesSource[index - 1].ts), new Date(msg.ts));
+            const messagesSource = filteredMessagesForCapture || (searchQuery ? searchResults : messages);
+            const isCurrentSearchResult = isSearching && currentResultIndex > -1 && searchResults[currentResultIndex]?.id === msg.id;
+
+            const showDateSeparator = !searchQuery && (index === 0 || !isSameDay(new Date(messagesSource[index - 1].ts), new Date(msg.ts)));
             return (
                 <React.Fragment key={msg.id}>
                     {showDateSeparator && <DateSeparator date={new Date(msg.ts)} />}
@@ -368,6 +521,10 @@ const AdminChatThread: React.FC<AdminChatThreadProps> = ({ viewedUser, chatPartn
                         msg={msg}
                         isFromViewedUser={msg.from === viewedUser.uid}
                         onScrollToMessage={handleScrollToMessage}
+                        viewedUser={viewedUser}
+                        chatPartner={chatPartner}
+                        searchQuery={searchQuery}
+                        isCurrentSearchResult={isCurrentSearchResult}
                     />
                 </React.Fragment>
             )
