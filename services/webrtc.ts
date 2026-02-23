@@ -28,8 +28,11 @@ export const startOutgoingCall = async (
     );
     setLocalStream(stream);
 
-    const callId = db.ref(`calls/${partner.uid}`).push().key;
+    const callId = db.ref().push().key; // Generate a unique key for the call.
     if (!callId) throw new Error("Failed to create call ID");
+
+    // Clean up any previous ICE candidates for this call ID.
+    db.ref(`iceCandidates/${callId}`).remove();
     
     // Log the outgoing call for the current user ONLY.
     const callTimestamp = firebase.database.ServerValue.TIMESTAMP;
@@ -88,6 +91,9 @@ export const acceptIncomingCall = async (
       incomingCall.type === 'video' ? { video: true, audio: true } : { audio: true }
     );
     setLocalStream(stream);
+
+    // Clean up any previous ICE candidates for this call ID.
+    db.ref(`iceCandidates/${incomingCall.id}`).remove();
 
     const newActiveCall: ActiveCall = { 
       id: incomingCall.id, 
@@ -163,7 +169,11 @@ export const setupCallListeners = (
       if (snapshot.exists()) {
         const answer = snapshot.val();
         if (pc.signalingState !== 'stable' && pc.remoteDescription === null) {
-          await pc.setRemoteDescription(new RTCSessionDescription(answer));
+          try {
+            await pc.setRemoteDescription(new RTCSessionDescription(answer));
+          } catch (e) {
+            console.error("Failed to set remote description from answer:", e);
+          }
         }
       }
     };
@@ -181,6 +191,9 @@ export const endCall = (
   user: User | null,
   db: Database,
 ) => {
+    if (activeCall) {
+    db.ref(`iceCandidates/${activeCall.id}`).remove();
+  }
   pcRef.current?.close();
   pcRef.current = null;
   localStream?.getTracks().forEach(track => track.stop());
