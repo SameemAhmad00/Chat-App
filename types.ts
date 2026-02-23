@@ -11,7 +11,13 @@ export interface UserProfile {
     notifications?: {
       enabled?: boolean;
       sound?: boolean;
-    }
+    };
+    appearance?: {
+      messageBubbleColor?: string;
+      receivedMessageBubbleColor?: string;
+      chatBackgroundColor?: string;
+      chatFontSize?: string;
+    };
   };
   isAdmin?: boolean;
   isBlockedByAdmin?: boolean;
@@ -53,7 +59,27 @@ export interface Message {
     text: string;
   };
   isDeleted?: boolean;
+  type?: 'game_invitation' | 'game_result';
+  gameType?: 'tictactoe';
+  invitationStatus?: 'pending' | 'accepted' | 'declined';
+  gameResult?: {
+    winnerUsername?: string;
+    result: 'win' | 'draw';
+  };
 }
+
+export interface TicTacToeGameState {
+  board: ('X' | 'O' | '')[];
+  turn: string; // UID
+  status: 'active' | 'won' | 'draw' | 'forfeited';
+  winner?: string | null; // UID or 'draw'
+  players: {
+    [uid: string]: 'X' | 'O';
+  };
+  startedBy: string; // UID
+  winningLine?: number[];
+}
+
 
 export interface Call {
   id:string;
@@ -73,4 +99,16 @@ export interface CallRecord {
   direction: 'incoming' | 'outgoing';
   ts: number;
   duration?: number; // in seconds
+}
+
+export interface Report {
+  id: string;
+  chatId: string;
+  messageId: string;
+  messageText: string;
+  reportedUser: { uid: string; username: string; photoURL?: string };
+  reporterUser: { uid: string; username: string };
+  reason: string;
+  ts: number;
+  status: 'pending' | 'dismissed' | 'action_taken';
 }

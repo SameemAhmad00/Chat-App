@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Routes, Route, useNavigate, useLocation, Navigate, useParams } from 'react-router-dom';
 // FIX: Use firebase v9 compat imports to resolve module errors.
 import firebase from 'firebase/compat/app';
 import { auth, db } from './services/firebase';
@@ -11,17 +12,13 @@ import CallScreen from './components/CallScreen';
 import SettingsScreen from './components/SettingsScreen';
 import AdminScreen from './components/AdminScreen';
 import AdminChatViewer from './components/AdminChatViewer';
+import AdminUserDetail from './components/AdminUserDetail';
+import AppearanceSettings from './components/AppearanceSettings';
 import { endCall, startOutgoingCall, acceptIncomingCall } from './services/webrtc';
 import { setupNotifications } from './services/notifications';
+import { checkMediaPermissions } from './services/permissions';
 
-export type NavigationState =
-  | { view: 'auth' }
-  | { view: 'main' }
-  | { view: 'chat'; partner: Contact }
-  | { view: 'call'; activeCall: ActiveCall }
-  | { view: 'settings' }
-  | { view: 'admin' }
-  | { view: 'adminChatViewer'; viewedUser: UserProfile };
+
 
 export type ActiveCall = {
   id: string;
@@ -37,7 +34,7 @@ const App: React.FC = () => {
   const [user, setUser] = useState<firebase.User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   
-  const [navigationStack, setNavigationStack] = useState<NavigationState[]>([{ view: 'auth' }]);
+
 
   // WebRTC State
   const [incomingCall, setIncomingCall] = useState<Call | null>(null);
@@ -49,20 +46,12 @@ const App: React.FC = () => {
   // PWA Install Prompt State
   const [installPrompt, setInstallPrompt] = useState<any>(null);
 
-  const pushView = (state: NavigationState) => {
-    setNavigationStack(stack => [...stack, state]);
-  };
 
-  const popView = () => {
-    setNavigationStack(stack => (stack.length > 1 ? stack.slice(0, -1) : stack));
-  };
   
-  const resetToView = (state: NavigationState) => {
-      setNavigationStack([state]);
-  };
-  
-  const currentNavigationState = navigationStack[navigationStack.length - 1];
-  const activeCall = currentNavigationState.view === 'call' ? currentNavigationState.activeCall : null;
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const activeCall = location.state?.activeCall as ActiveCall | null;
 
 
   const cleanupWebRTC = useCallback(() => {
@@ -75,24 +64,7 @@ const App: React.FC = () => {
     setRemoteStream(null);
   }, [localStream, activeCall, user, db]);
   
-  // Handle browser back button
-  useEffect(() => {
-      const handlePopState = () => {
-          popView();
-      };
-      
-      // We push a state to the history every time our navigation stack grows
-      // beyond 1, effectively creating a browser history entry for each new screen.
-      if (navigationStack.length > 1) {
-          window.history.pushState({ view: currentNavigationState.view }, '');
-      }
-      
-      window.addEventListener('popstate', handlePopState);
-      
-      return () => {
-          window.removeEventListener('popstate', handlePopState);
-      };
-  }, [navigationStack.length]);
+
 
 
   useEffect(() => {
@@ -113,14 +85,14 @@ const App: React.FC = () => {
             setUser(user);
             setProfile(userProfile);
             
-            if (currentNavigationState.view === 'auth') {
-                resetToView({ view: 'main' });
+            if (location.pathname === '/auth' || location.pathname === '/') {
+                navigate('/main');
             }
 
           } else {
              setUser(user);
              setProfile(null);
-             resetToView({ view: 'auth' });
+             navigate('/auth');
           }
           setIsLoading(false);
         };
@@ -130,7 +102,7 @@ const App: React.FC = () => {
       } else {
         setUser(null);
         setProfile(null);
-        resetToView({ view: 'auth' });
+        navigate('/auth');
         setIsLoading(false);
       }
     });
@@ -202,7 +174,7 @@ const App: React.FC = () => {
       if (calls) {
         const [callId, callData] = Object.entries(calls)[0] as [string, Call];
         const isBlocked = profile.blocked && profile.blocked[callData.from];
-        if (currentNavigationState.view !== 'call' && !isBlocked) {
+        if (location.pathname !== '/call' && !isBlocked) {
           setIncomingCall({ ...callData, id: callId });
         } else if (isBlocked) {
           // Auto-reject
@@ -216,24 +188,31 @@ const App: React.FC = () => {
 
     // FIX: Use compat version of off.
     return () => callsRef.off('value', listener);
-  }, [user, profile, currentNavigationState.view]);
+  }, [user, profile, location.pathname]);
 
   const handleStartCall = async (partner: Contact, type: 'video' | 'voice') => {
     if (!user || !profile) return;
+
+    const hasPermission = await checkMediaPermissions(type);
+    if (!hasPermission) return;
     
     const { activeCall: newActiveCall, unsubscribers } = await startOutgoingCall(user, profile, partner, type, db, peerConnectionRef, setLocalStream, setRemoteStream, cleanupWebRTC);
     if (newActiveCall && unsubscribers) {
-        pushView({ view: 'call', activeCall: newActiveCall });
+        navigate('/call', { state: { activeCall: newActiveCall } });
         callListenersRef.current = unsubscribers;
     }
   };
 
   const handleAcceptCall = async () => {
     if (!incomingCall || !user || !profile) return;
+    
+    const hasPermission = await checkMediaPermissions(incomingCall.type);
+    if (!hasPermission) return;
+
     setIncomingCall(null);
     const { activeCall: newActiveCall, unsubscribers } = await acceptIncomingCall(user, profile, incomingCall, db, peerConnectionRef, setLocalStream, setRemoteStream, cleanupWebRTC);
     if (newActiveCall && unsubscribers) {
-        pushView({ view: 'call', activeCall: newActiveCall });
+        navigate('/call', { state: { activeCall: newActiveCall } });
         callListenersRef.current = unsubscribers;
     }
   };
@@ -267,12 +246,12 @@ const App: React.FC = () => {
         });
     }
     cleanupWebRTC();
-    resetToView({ view: 'main' });
+    navigate('/main');
   };
 
   const handleProfileSetupComplete = (newProfile: UserProfile) => {
     setProfile(newProfile);
-    resetToView({ view: 'main' });
+    navigate('/main');
   }
   
   const handleInstallClick = () => {
@@ -287,82 +266,61 @@ const App: React.FC = () => {
     });
   };
 
+  const ChatScreenWrapper: React.FC<{ user: firebase.User, profile: UserProfile, onStartCall: (partner: Contact, type: 'video' | 'voice') => void }> = ({ user, profile, onStartCall }) => {
+    const { partnerId } = useParams<{ partnerId: string }>();
+    const location = useLocation();
+    const [partner, setPartner] = useState<Contact | null>(location.state?.partner || null);
+
+    useEffect(() => {
+      if (!partner && partnerId) {
+        const partnerRef = db.ref(`users/${partnerId}`);
+        partnerRef.once('value', (snapshot) => {
+          if (snapshot.exists()) {
+            const data = snapshot.val();
+            setPartner({
+              uid: partnerId,
+              username: data.username,
+              photoURL: data.photoURL || null
+            });
+          }
+        });
+      }
+    }, [partnerId, partner]);
+
+    if (!user || !profile) return <Navigate to="/auth" />;
+    if (!partner) return <div className="flex items-center justify-center h-screen bg-gray-100 dark:bg-black text-gray-800 dark:text-gray-200">Loading chat...</div>;
+
+    return (
+      <ChatScreen 
+        user={user} 
+        profile={profile} 
+        partner={partner} 
+        onBack={() => navigate('/main')} 
+        onStartCall={onStartCall} 
+      />
+    );
+  };
+
   const renderContent = () => {
     if (isLoading) {
       return <div className="flex items-center justify-center h-screen bg-gray-100 dark:bg-black text-gray-800 dark:text-gray-200">Loading...</div>;
     }
 
-    switch (currentNavigationState.view) {
-      case 'auth':
-        return <AuthScreen onProfileSetupComplete={handleProfileSetupComplete} user={user} />;
-      
-      case 'main':
-        if (user && profile) {
-          return (
-            <MainScreen
-              user={user}
-              profile={profile}
-              onNavigate={(state) => pushView(state)}
-              onStartCall={handleStartCall}
-              incomingCall={incomingCall}
-              onAcceptCall={handleAcceptCall}
-              onRejectCall={handleRejectCall}
-              installPrompt={installPrompt}
-              onInstallClick={handleInstallClick}
-            />
-          );
-        }
-        return null; // Or a loading/error state
-
-      case 'chat':
-        if (user && profile) {
-          return (
-            <ChatScreen
-              user={user}
-              profile={profile}
-              partner={currentNavigationState.partner}
-              onBack={popView}
-              onStartCall={handleStartCall}
-            />
-          );
-        }
-        return null;
-
-      case 'call':
-        if (profile) {
-          return (
-            <CallScreen
-              profile={profile}
-              activeCall={currentNavigationState.activeCall}
-              localStream={localStream}
-              remoteStream={remoteStream}
-              onEndCall={handleEndCall}
-            />
-          );
-        }
-        return null;
-
-      case 'settings':
-        if (user && profile) {
-          return <SettingsScreen user={user} profile={profile} onBack={popView} />;
-        }
-        return null;
-        
-      case 'admin':
-        if (profile) {
-            return <AdminScreen currentUserProfile={profile} onBack={popView} onNavigate={(state) => pushView(state)} />;
-        }
-        return null;
-
-      case 'adminChatViewer':
-        if (user && profile) {
-            return <AdminChatViewer adminUser={profile} viewedUser={currentNavigationState.viewedUser} onBack={popView} />;
-        }
-        return null;
-
-      default:
-        return <AuthScreen onProfileSetupComplete={handleProfileSetupComplete} user={user} />;
-    }
+    return (
+      <Routes>
+        <Route path="/auth" element={<AuthScreen onProfileSetupComplete={handleProfileSetupComplete} user={user} />} />
+        <Route path="/main" element={user && profile ? <MainScreen user={user} profile={profile} onStartCall={handleStartCall} incomingCall={incomingCall} onAcceptCall={handleAcceptCall} onRejectCall={handleRejectCall} installPrompt={installPrompt} onInstallClick={handleInstallClick} /> : <Navigate to="/auth" />} />
+        <Route path="/chat/:partnerId" element={<ChatScreenWrapper user={user} profile={profile} onStartCall={handleStartCall} />} />
+        <Route path="/call" element={profile && activeCall ? <CallScreen profile={profile} activeCall={activeCall} localStream={localStream} remoteStream={remoteStream} onEndCall={handleEndCall} /> : <Navigate to="/main" />} />
+        <Route path="/settings" element={user && profile ? <SettingsScreen user={user} profile={profile} /> : <Navigate to="/auth" />} />
+        <Route path="/admin" element={profile?.isAdmin ? <AdminScreen currentUserProfile={profile} /> : <Navigate to="/main" />} />
+        <Route path="/admin/chat/:userId/:partnerId" element={user && profile?.isAdmin ? <AdminChatViewer adminUser={profile} /> : <Navigate to="/main" />} />
+        <Route path="/admin/appearance" element={profile?.isAdmin ? <AppearanceSettings /> : <Navigate to="/main" />} />
+        <Route path="/admin/chat/:userId" element={user && profile?.isAdmin ? <AdminChatViewer adminUser={profile} /> : <Navigate to="/main" />} />
+        <Route path="/admin/user/:userId" element={profile?.isAdmin ? <AdminUserDetail currentUserProfile={profile} /> : <Navigate to="/main" />} />
+        <Route path="*" element={<Navigate to={user ? "/main" : "/auth"} />} />
+      </Routes>
+    );
   };
 
   return (
