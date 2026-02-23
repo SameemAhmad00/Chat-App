@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 // FIX: Use firebase v9 compat imports to resolve module errors.
 import { db } from '../services/firebase';
 import type { UserProfile } from '../types';
@@ -54,6 +55,53 @@ const UserSignupChart: React.FC<{ data: number[] }> = ({ data }) => {
     );
 };
 
+const ConfirmationModal: React.FC<{
+  isOpen: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  title: string;
+  message: string;
+  confirmText?: string;
+  confirmColor?: string;
+}> = ({ isOpen, onClose, onConfirm, title, message, confirmText = 'Confirm', confirmColor = 'bg-green-600' }) => {
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9, y: 20 }}
+            className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-gray-200 dark:border-gray-700"
+          >
+            <div className="p-6">
+              <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-2">{title}</h3>
+              <p className="text-gray-600 dark:text-gray-400 leading-relaxed">{message}</p>
+            </div>
+            <div className="bg-gray-50 dark:bg-gray-700/50 p-4 flex justify-end space-x-3">
+              <button
+                onClick={onClose}
+                className="px-5 py-2 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  onConfirm();
+                  onClose();
+                }}
+                className={`px-5 py-2 text-sm font-semibold text-white ${confirmColor} hover:opacity-90 rounded-xl transition-all shadow-lg shadow-black/10`}
+              >
+                {confirmText}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
+  );
+};
+
 const AdminScreen: React.FC<AdminScreenProps> = ({ currentUserProfile, onBack, onNavigate }) => {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -62,6 +110,19 @@ const AdminScreen: React.FC<AdminScreenProps> = ({ currentUserProfile, onBack, o
   const [editingUser, setEditingUser] = useState<{ uid: string; newUsername: string } | null>(null);
   const [stats, setStats] = useState({ totalUsers: 0, activeUsers: 0, totalAdmins: 0, totalBlocked: 0 });
   const [signupData, setSignupData] = useState<number[]>(Array(7).fill(0));
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    confirmText?: string;
+    confirmColor?: string;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
 
 
   useEffect(() => {
@@ -115,8 +176,21 @@ const AdminScreen: React.FC<AdminScreenProps> = ({ currentUserProfile, onBack, o
       alert("You cannot change your own admin status.");
       return;
     }
-    // FIX: Use compat version of ref and update.
-    db.ref(`users/${uid}`).update({ isAdmin: !currentStatus });
+    
+    const user = users.find(u => u.uid === uid);
+    const username = user?.username || 'this user';
+    const action = currentStatus ? 'remove admin privileges from' : 'grant admin privileges to';
+    
+    setConfirmDialog({
+      isOpen: true,
+      title: currentStatus ? 'Remove Admin Privileges' : 'Grant Admin Privileges',
+      message: `Are you sure you want to ${action} @${username}?`,
+      confirmText: currentStatus ? 'Remove Admin' : 'Make Admin',
+      confirmColor: currentStatus ? 'bg-red-600' : 'bg-indigo-600',
+      onConfirm: () => {
+        db.ref(`users/${uid}`).update({ isAdmin: !currentStatus });
+      }
+    });
   };
 
   const handleToggleBlock = (uid: string, currentStatus: boolean) => {
@@ -124,8 +198,21 @@ const AdminScreen: React.FC<AdminScreenProps> = ({ currentUserProfile, onBack, o
       alert("You cannot block yourself.");
       return;
     }
-    // FIX: Use compat version of ref and update.
-    db.ref(`users/${uid}`).update({ isBlockedByAdmin: !currentStatus });
+
+    const user = users.find(u => u.uid === uid);
+    const username = user?.username || 'this user';
+    const action = currentStatus ? 'unblock' : 'block';
+
+    setConfirmDialog({
+      isOpen: true,
+      title: currentStatus ? 'Unblock User' : 'Block User',
+      message: `Are you sure you want to ${action} @${username}?`,
+      confirmText: currentStatus ? 'Unblock' : 'Block',
+      confirmColor: currentStatus ? 'bg-green-600' : 'bg-yellow-600',
+      onConfirm: () => {
+        db.ref(`users/${uid}`).update({ isBlockedByAdmin: !currentStatus });
+      }
+    });
   };
 
   const handleDeleteUser = (userToDelete: UserProfile) => {
@@ -133,15 +220,22 @@ const AdminScreen: React.FC<AdminScreenProps> = ({ currentUserProfile, onBack, o
       alert("You cannot delete your own account.");
       return;
     }
-    if (window.confirm(`Are you sure you want to permanently delete user @${userToDelete.username}? This action cannot be undone.`)) {
+    
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Delete User Account',
+      message: `Are you sure you want to permanently delete user @${userToDelete.username}? This action cannot be undone and all user data will be lost.`,
+      confirmText: 'Delete Permanently',
+      confirmColor: 'bg-red-600',
+      onConfirm: () => {
         const updates: { [key: string]: null } = {};
         updates[`/users/${userToDelete.uid}`] = null;
         if (userToDelete.username) {
             updates[`/usernames/${userToDelete.username.toLowerCase()}`] = null;
         }
-        // FIX: Use compat version of ref and update.
         db.ref().update(updates);
-    }
+      }
+    });
   };
   
   const handleUpdateUsername = async (userToUpdate: UserProfile) => {
@@ -243,80 +337,107 @@ const AdminScreen: React.FC<AdminScreenProps> = ({ currentUserProfile, onBack, o
       </header>
       
       <main className="flex-1 overflow-y-auto p-4 lg:p-6 space-y-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          <StatCard icon={<UsersIcon className="w-6 h-6 text-white"/>} title="Total Users" value={stats.totalUsers} color="bg-blue-500"/>
-          <StatCard icon={<CheckIcon className="w-6 h-6 text-white"/>} title="Active Now" value={stats.activeUsers} color="bg-green-500"/>
-          <StatCard icon={<ShieldCheckIcon className="w-6 h-6 text-white"/>} title="Admins" value={stats.totalAdmins} color="bg-indigo-500"/>
-          <StatCard icon={<CancelIcon className="w-6 h-6 text-white"/>} title="Blocked" value={stats.totalBlocked} color="bg-red-500"/>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-1">
-             <UserSignupChart data={signupData} />
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center h-64 space-y-4">
+            <div className="w-12 h-12 border-4 border-green-500/20 border-t-green-500 rounded-full animate-spin"></div>
+            <p className="text-gray-500 dark:text-gray-400 font-medium animate-pulse">Fetching dashboard data...</p>
           </div>
-          <div className="lg:col-span-2 bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md">
-                <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">User Management</h3>
-                    <div className="w-full sm:w-1/2 md:w-1/3">
-                        <input
-                            type="text"
-                            placeholder="Search users..."
-                            aria-label="Search users"
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full px-3 py-1.5 bg-gray-50 dark:bg-gray-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-green-500 border border-gray-200 dark:border-gray-600 text-sm"
-                        />
+        ) : (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              <StatCard icon={<UsersIcon className="w-6 h-6 text-white"/>} title="Total Users" value={stats.totalUsers} color="bg-blue-500"/>
+              <StatCard icon={<CheckIcon className="w-6 h-6 text-white"/>} title="Active Now" value={stats.activeUsers} color="bg-green-500"/>
+              <StatCard icon={<ShieldCheckIcon className="w-6 h-6 text-white"/>} title="Admins" value={stats.totalAdmins} color="bg-indigo-500"/>
+              <StatCard icon={<CancelIcon className="w-6 h-6 text-white"/>} title="Blocked" value={stats.totalBlocked} color="bg-red-500"/>
+            </div>
+
+
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-1">
+                 <UserSignupChart data={signupData} />
+              </div>
+              <div className="lg:col-span-2 bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md">
+                    <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">User Management</h3>
+                        <div className="w-full sm:w-1/2 md:w-1/3">
+                            <input
+                                type="text"
+                                placeholder="Search users..."
+                                aria-label="Search users"
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="w-full px-3 py-1.5 bg-gray-50 dark:bg-gray-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-green-500 border border-gray-200 dark:border-gray-600 text-sm"
+                            />
+                        </div>
                     </div>
-                </div>
 
-                <div className="overflow-x-auto">
-                    {isLoading ? (
-                      <div className="text-center p-4 text-gray-500 dark:text-gray-400">Loading...</div>
-                    ) : (
-                      <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                          <thead className="bg-gray-50 dark:bg-gray-800">
-                              <tr>
-                                  <SortableHeader sortKey="name">User</SortableHeader>
-                                  <SortableHeader sortKey="email">Email</SortableHeader>
-                                  <SortableHeader sortKey="isAdmin">Admin</SortableHeader>
-                                  <SortableHeader sortKey="isBlockedByAdmin">Blocked</SortableHeader>
-                                  <th scope="col" className="p-3 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
-                              </tr>
-                          </thead>
-                          <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                              {sortedAndFilteredUsers.map(user => {
-                                  const isEditingThisUser = editingUser?.uid === user.uid;
-                                  return (
-                                      <tr key={user.uid} className={`hover:bg-gray-50 dark:hover:bg-gray-700 ${isEditingThisUser ? 'bg-green-50 dark:bg-green-900/20' : ''}`}>
-                                          <td className="p-3 whitespace-nowrap">
-                                              <div className="flex items-center">
-                                                  <Avatar photoURL={user.photoURL} username={user.username || ''} className="w-10 h-10" />
-                                                  <div className="ml-3 min-w-0">
-                                                      <p className="font-bold text-gray-900 dark:text-gray-100 truncate">{user.name}</p>
-                                                      {isEditingThisUser ? (
-                                                        <div className="flex items-center mt-1"><span className="text-sm text-gray-600 dark:text-gray-300">@</span><input type="text" value={editingUser.newUsername} onChange={(e) => setEditingUser({ ...editingUser, newUsername: e.target.value.toLowerCase().replace(/[^a-z0-9_.]/g, '') })} className="w-40 p-1 text-sm bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500" autoFocus onKeyDown={(e) => e.key === 'Enter' && handleUpdateUsername(user)} /></div>
-                                                      ) : (
-                                                        <p className="text-sm text-gray-600 dark:text-gray-300 truncate">@{user.username}</p>
-                                                      )}
+                    <div className="overflow-x-auto">
+                          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                              <thead className="bg-gray-50 dark:bg-gray-800">
+                                  <tr>
+                                      <SortableHeader sortKey="name">User</SortableHeader>
+                                      <SortableHeader sortKey="email">Email</SortableHeader>
+                                      <SortableHeader sortKey="isAdmin">Admin</SortableHeader>
+                                      <SortableHeader sortKey="isBlockedByAdmin">Blocked</SortableHeader>
+                                      <th scope="col" className="p-3 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
+                                  </tr>
+                              </thead>
+                              <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                                  {sortedAndFilteredUsers.map((user, index) => {
+                                      const isEditingThisUser = editingUser?.uid === user.uid;
+                                      return (
+                                          <tr 
+                                            key={user.uid} 
+                                            onClick={() => !isEditingThisUser && onNavigate({ view: 'adminUserDetail', viewedUser: user })}
+                                            className={`
+                                              ${index % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50/50 dark:bg-gray-800/50'}
+                                              hover:bg-green-50/50 dark:hover:bg-green-900/10 
+                                              transition-colors duration-150 ease-in-out
+                                              cursor-pointer 
+                                              ${isEditingThisUser ? 'bg-green-50 dark:bg-green-900/20 cursor-default' : ''}
+                                            `}
+                                          >
+                                              <td className="p-3 whitespace-nowrap">
+                                                  <div className="flex items-center">
+                                                      <Avatar photoURL={user.photoURL} username={user.username || ''} className="w-10 h-10" />
+                                                      <div className="ml-3 min-w-0">
+                                                          <p className="font-bold text-gray-900 dark:text-gray-100 truncate">{user.name}</p>
+                                                          {isEditingThisUser ? (
+                                                            <div className="flex items-center mt-1" onClick={(e) => e.stopPropagation()}><span className="text-sm text-gray-600 dark:text-gray-300">@</span><input type="text" value={editingUser.newUsername} onChange={(e) => setEditingUser({ ...editingUser, newUsername: e.target.value.toLowerCase().replace(/[^a-z0-9_.]/g, '') })} className="w-40 p-1 text-sm bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500" autoFocus onKeyDown={(e) => e.key === 'Enter' && handleUpdateUsername(user)} /></div>
+                                                          ) : (
+                                                            <p className="text-sm text-gray-600 dark:text-gray-300 truncate">@{user.username}</p>
+                                                          )}
+                                                      </div>
                                                   </div>
-                                              </div>
-                                          </td>
-                                          <td className="p-3 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300 truncate">{user.email}</td>
-                                          <td className="p-3 whitespace-nowrap text-center">{user.isAdmin ? <CheckIcon className="w-5 h-5 text-green-500 mx-auto" /> : <CancelIcon className="w-5 h-5 text-red-500 mx-auto opacity-50" />}</td>
-                                          <td className="p-3 whitespace-nowrap text-center">{user.isBlockedByAdmin ? <CheckIcon className="w-5 h-5 text-yellow-500 mx-auto" /> : <CancelIcon className="w-5 h-5 text-red-500 mx-auto opacity-50" />}</td>
-                                          <td className="p-3 whitespace-nowrap text-sm font-medium">
-                                              <div className="flex items-center space-x-1">{isEditingThisUser ? (<><button onClick={() => handleUpdateUsername(user)} className="p-2 text-green-500 hover:bg-green-100 dark:hover:bg-green-900/50 rounded-full" aria-label={`Save username for ${user.username}`}><CheckIcon className="w-5 h-5" /></button><button onClick={() => setEditingUser(null)} className="p-2 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/50 rounded-full" aria-label="Cancel username edit"><CancelIcon className="w-5 h-5" /></button></>) : (<><button onClick={() => onNavigate({ view: 'adminChatViewer', viewedUser: user })} className="p-2 text-blue-500 hover:bg-blue-100 dark:hover:bg-blue-900/50 rounded-full" aria-label={`View chats for ${user.username}`}><EyeIcon className="w-5 h-5" /></button><button onClick={() => setEditingUser({ uid: user.uid, newUsername: user.username || '' })} className="p-2 text-indigo-500 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 rounded-full" aria-label={`Edit username for ${user.username}`}><PencilIcon className="w-5 h-5" /></button><button onClick={() => handleToggleAdmin(user.uid, !!user.isAdmin)} className="p-2 text-green-500 hover:bg-green-100 dark:hover:bg-green-900/50 rounded-full disabled:opacity-30 disabled:hover:bg-transparent" disabled={user.uid === currentUserProfile.uid} aria-label={user.isAdmin ? `Remove admin status from ${user.username}` : `Make ${user.username} an admin`}><ShieldCheckIcon className="w-5 h-5" /></button><button onClick={() => handleToggleBlock(user.uid, !!user.isBlockedByAdmin)} className="p-2 text-yellow-500 hover:bg-yellow-100 dark:hover:bg-yellow-900/50 rounded-full disabled:opacity-30 disabled:hover:bg-transparent" disabled={user.uid === currentUserProfile.uid} aria-label={user.isBlockedByAdmin ? `Unblock ${user.username}` : `Block ${user.username}`}><CheckIcon className="w-5 h-5" /></button><button onClick={() => handleDeleteUser(user)} className="p-2 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/50 rounded-full disabled:opacity-30 disabled:hover:bg-transparent" disabled={user.uid === currentUserProfile.uid} aria-label={`Delete user ${user.username}`}><TrashIcon className="w-5 h-5" /></button></>)}</div>
-                                          </td>
-                                      </tr>
-                                  )
-                              })}
-                          </tbody>
-                      </table>
-                    )}
-                </div>
-          </div>
-        </div>
+                                              </td>
+                                              <td className="p-3 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300 truncate">{user.email}</td>
+                                              <td className="p-3 whitespace-nowrap text-center">{user.isAdmin ? <CheckIcon className="w-5 h-5 text-green-500 mx-auto" /> : <CancelIcon className="w-5 h-5 text-red-500 mx-auto opacity-50" />}</td>
+                                              <td className="p-3 whitespace-nowrap text-center">{user.isBlockedByAdmin ? <CheckIcon className="w-5 h-5 text-yellow-500 mx-auto" /> : <CancelIcon className="w-5 h-5 text-red-500 mx-auto opacity-50" />}</td>
+                                              <td className="p-3 whitespace-nowrap text-sm font-medium">
+                                                  <div className="flex items-center space-x-1">{isEditingThisUser ? (<><button onClick={(e) => { e.stopPropagation(); handleUpdateUsername(user); }} className="p-2 text-green-500 hover:bg-green-100 dark:hover:bg-green-900/50 rounded-full" aria-label={`Save username for ${user.username}`}><CheckIcon className="w-5 h-5" /></button><button onClick={(e) => { e.stopPropagation(); setEditingUser(null); }} className="p-2 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/50 rounded-full" aria-label="Cancel username edit"><CancelIcon className="w-5 h-5" /></button></>) : (<><button onClick={(e) => { e.stopPropagation(); onNavigate({ view: 'adminChatViewer', viewedUser: user }); }} className="p-2 text-blue-500 hover:bg-blue-100 dark:hover:bg-blue-900/50 rounded-full" aria-label={`View chats for ${user.username}`}><EyeIcon className="w-5 h-5" /></button><button onClick={(e) => { e.stopPropagation(); setEditingUser({ uid: user.uid, newUsername: user.username || '' }); }} className="p-2 text-indigo-500 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 rounded-full" aria-label={`Edit username for ${user.username}`}><PencilIcon className="w-5 h-5" /></button><button onClick={(e) => { e.stopPropagation(); handleToggleAdmin(user.uid, !!user.isAdmin); }} className="p-2 text-green-500 hover:bg-green-100 dark:hover:bg-green-900/50 rounded-full disabled:opacity-30 disabled:hover:bg-transparent" disabled={user.uid === currentUserProfile.uid} aria-label={user.isAdmin ? `Remove admin status from ${user.username}` : `Make ${user.username} an admin`}><ShieldCheckIcon className="w-5 h-5" /></button><button onClick={(e) => { e.stopPropagation(); handleToggleBlock(user.uid, !!user.isBlockedByAdmin); }} className="p-2 text-yellow-500 hover:bg-yellow-100 dark:hover:bg-yellow-900/50 rounded-full disabled:opacity-30 disabled:hover:bg-transparent" disabled={user.uid === currentUserProfile.uid} aria-label={user.isBlockedByAdmin ? `Unblock ${user.username}` : `Block ${user.username}`}><CheckIcon className="w-5 h-5" /></button><button onClick={(e) => { e.stopPropagation(); handleDeleteUser(user); }} className="p-2 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/50 rounded-full disabled:opacity-30 disabled:hover:bg-transparent" disabled={user.uid === currentUserProfile.uid} aria-label={`Delete user ${user.username}`}><TrashIcon className="w-5 h-5" /></button></>)}</div>
+                                              </td>
+                                          </tr>
+                                      )
+                                  })}
+                              </tbody>
+                          </table>
+                    </div>
+              </div>
+            </div>
+          </>
+        )}
       </main>
+
+      <ConfirmationModal
+        isOpen={confirmDialog.isOpen}
+        onClose={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        confirmText={confirmDialog.confirmText}
+        confirmColor={confirmDialog.confirmColor}
+      />
     </div>
   );
 };

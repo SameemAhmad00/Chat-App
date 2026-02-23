@@ -11,7 +11,13 @@ export interface UserProfile {
     notifications?: {
       enabled?: boolean;
       sound?: boolean;
-    }
+    };
+    appearance?: {
+      messageBubbleColor?: string;
+      receivedMessageBubbleColor?: string;
+      chatBackgroundColor?: string;
+      chatFontSize?: string;
+    };
   };
   isAdmin?: boolean;
   isBlockedByAdmin?: boolean;

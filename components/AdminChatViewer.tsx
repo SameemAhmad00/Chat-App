@@ -2,10 +2,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 // FIX: Use firebase v9 compat imports to resolve module errors.
 import { db } from '../services/firebase';
+import { useParams, useNavigate } from 'react-router-dom';
 import type { UserProfile, Contact, Message } from '../types';
-import { BackIcon, DownloadIcon, CameraIcon, ProhibitIcon, SearchIcon, ArrowUpIcon, ArrowDownIcon, CancelIcon, GameIcon } from './Icons';
+import { BackIcon, DownloadIcon, CameraIcon, ProhibitIcon, SearchIcon, ArrowUpIcon, ArrowDownIcon, CancelIcon, GameIcon, ExclamationTriangleIcon, TrashIcon, CheckIcon } from './Icons';
 import Avatar from './Avatar';
 import { useTheme } from '../contexts/ThemeContext';
+import type { Report } from '../types';
 
 // Make html2canvas available from the global scope where it's loaded via script tag
 declare const html2canvas: any;
@@ -13,21 +15,16 @@ declare const html2canvas: any;
 // Props for the main viewer component
 interface AdminChatViewerProps {
   adminUser: UserProfile;
-  viewedUser: UserProfile;
-  onBack: () => void;
 }
 
 // Props for the chat thread view
 interface AdminChatThreadProps {
-  viewedUser: UserProfile;
-  chatPartner: Contact;
-  onBack: () => void;
+  adminUser: UserProfile;
 }
 
 // Props for the contact list view
 interface AdminContactListProps {
   viewedUser: UserProfile;
-  onSelectChat: (partner: Contact) => void;
 }
 
 const isSameDay = (d1: Date, d2: Date) => {
@@ -73,17 +70,32 @@ const AdminMessageBubble: React.FC<{
   chatPartner: Contact;
   searchQuery?: string;
   isCurrentSearchResult?: boolean;
-}> = ({ msg, isFromViewedUser, onScrollToMessage, viewedUser, chatPartner, searchQuery, isCurrentSearchResult }) => {
+  reports?: Report[];
+  onAction?: (action: 'dismiss' | 'delete', reportId?: string) => void;
+  messageBubbleColor?: string;
+  receivedMessageBubbleColor?: string;
+  chatFontSize?: string;
+}> = ({ msg, isFromViewedUser, onScrollToMessage, viewedUser, chatPartner, searchQuery, isCurrentSearchResult, reports, onAction, messageBubbleColor, receivedMessageBubbleColor, chatFontSize = 'text-sm' }) => {
   
+  const msgReports = reports?.filter(r => r.messageId === msg.id && r.status === 'pending') || [];
+  const isFlagged = msgReports.length > 0;
+
   const renderSpecialMessage = () => {
     if (msg.type === 'game_invitation') {
         const senderUsername = msg.from === viewedUser.uid ? viewedUser.username : chatPartner.username;
         return (
-             <div className={`flex items-center p-3 rounded-lg ${isFromViewedUser ? 'bg-green-100 dark:bg-green-800' : 'bg-white dark:bg-gray-700'}`}>
-                <GameIcon className="w-10 h-10 text-green-500" />
+             <div 
+               className={`flex items-center p-3 rounded-lg ${isFromViewedUser ? (messageBubbleColor ? 'text-white' : 'bg-green-100 dark:bg-green-800') : (receivedMessageBubbleColor ? 'text-white' : 'bg-white dark:bg-gray-700')}`}
+               style={
+                 isFromViewedUser 
+                   ? (messageBubbleColor ? { backgroundColor: messageBubbleColor } : {})
+                   : (receivedMessageBubbleColor ? { backgroundColor: receivedMessageBubbleColor } : {})
+               }
+             >
+                <GameIcon className={`w-10 h-10 ${isFromViewedUser && messageBubbleColor ? 'text-white' : 'text-green-500'}`} />
                 <div className="ml-3">
-                    <p className="font-semibold text-gray-800 dark:text-gray-100">{senderUsername} sent a game invite.</p>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Status: {msg.invitationStatus || 'pending'}</p>
+                    <p className={`font-semibold ${isFromViewedUser && messageBubbleColor ? 'text-white' : 'text-gray-800 dark:text-gray-100'}`}>{senderUsername} sent a game invite.</p>
+                    <p className={`text-sm ${isFromViewedUser && messageBubbleColor ? 'text-white/80' : 'text-gray-500 dark:text-gray-400'}`}>Status: {msg.invitationStatus || 'pending'}</p>
                 </div>
             </div>
         );
@@ -131,9 +143,24 @@ const AdminMessageBubble: React.FC<{
     >
       <div
         className={`max-w-xs md:max-w-md lg:max-w-lg px-2 py-1 rounded-lg shadow-sm relative ${
-          isFromViewedUser ? 'bg-green-100 dark:bg-green-800' : 'bg-white dark:bg-gray-700'
-        } text-gray-800 dark:text-gray-100`}
+          isFlagged ? 'ring-2 ring-red-500 bg-red-50 dark:bg-red-900/20' : 
+          isFromViewedUser 
+            ? (messageBubbleColor ? 'text-white' : 'bg-green-100 dark:bg-green-800 text-gray-800 dark:text-gray-100') 
+            : (receivedMessageBubbleColor ? 'text-white' : 'bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100')
+        }`}
+        style={
+          !isFlagged ? (
+            isFromViewedUser 
+              ? (messageBubbleColor ? { backgroundColor: messageBubbleColor } : {})
+              : (receivedMessageBubbleColor ? { backgroundColor: receivedMessageBubbleColor } : {})
+          ) : {}
+        }
       >
+        {isFlagged && (
+          <div className="absolute -top-2 -left-2 bg-red-500 text-white p-1 rounded-full shadow-md z-20" title={`${msgReports.length} report(s)`}>
+            <ExclamationTriangleIcon className="w-3 h-3" />
+          </div>
+        )}
         {msg.replyTo && (
           <button
             onClick={() => onScrollToMessage(msg.replyTo.messageId)}
@@ -145,7 +172,7 @@ const AdminMessageBubble: React.FC<{
           </button>
         )}
         <div className="flex flex-wrap items-baseline" style={{ wordBreak: 'break-word' }}>
-          <p className="mr-2" style={{ whiteSpace: 'pre-wrap' }}>
+          <p className={`mr-2 ${chatFontSize}`} style={{ whiteSpace: 'pre-wrap' }}>
              <HighlightedText text={msg.text} highlight={searchQuery || ''} />
           </p>
           <div className="flex items-center text-xs text-gray-600 dark:text-gray-300 ml-auto self-end shrink-0">
@@ -153,29 +180,74 @@ const AdminMessageBubble: React.FC<{
             <span className="mr-1">{new Date(msg.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}</span>
           </div>
         </div>
+        
+        {isFlagged && onAction && (
+          <div className="mt-2 pt-2 border-t border-red-200 dark:border-red-800 flex flex-col space-y-2">
+            <p className="text-[10px] font-bold text-red-600 dark:text-red-400 uppercase tracking-wider">Reports:</p>
+            {msgReports.map(r => (
+              <div key={r.id} className="text-[11px] bg-red-100 dark:bg-red-900/40 p-1.5 rounded">
+                <p className="font-bold">By @{r.reporterUser.username}:</p>
+                <p className="italic">"{r.reason}"</p>
+                <div className="flex justify-end space-x-2 mt-1">
+                  <button 
+                    onClick={() => onAction('dismiss', r.id)}
+                    className="flex items-center text-green-600 hover:text-green-700 font-bold"
+                  >
+                    <CheckIcon className="w-3 h-3 mr-1" /> Dismiss
+                  </button>
+                  <button 
+                    onClick={() => onAction('delete', r.id)}
+                    className="flex items-center text-red-600 hover:text-red-700 font-bold"
+                  >
+                    <TrashIcon className="w-3 h-3 mr-1" /> Delete Msg
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
 };
 
 
-const AdminChatViewer: React.FC<AdminChatViewerProps> = ({ adminUser, viewedUser, onBack }) => {
-  const [selectedChatPartner, setSelectedChatPartner] = useState<Contact | null>(null);
+const AdminChatViewer: React.FC<AdminChatViewerProps> = ({ adminUser }) => {
+  const { userId, partnerId } = useParams<{ userId: string; partnerId?: string }>();
+  const navigate = useNavigate();
+  const [viewedUser, setViewedUser] = useState<UserProfile | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  if (selectedChatPartner) {
-    return (
-      <AdminChatThread
-        viewedUser={viewedUser}
-        chatPartner={selectedChatPartner}
-        onBack={() => setSelectedChatPartner(null)}
-      />
-    );
+  useEffect(() => {
+    if (!userId) return;
+    const userRef = db.ref(`users/${userId}`);
+    const listener = userRef.on('value', (snapshot) => {
+      if (snapshot.exists()) {
+        setViewedUser(snapshot.val() as UserProfile);
+      } else {
+        setViewedUser(null);
+      }
+      setIsLoading(false);
+    });
+    return () => userRef.off('value', listener);
+  }, [userId]);
+
+  if (partnerId) {
+    return <AdminChatThread adminUser={adminUser} />;
+  }
+
+  if (isLoading) {
+    return <div className="flex items-center justify-center h-full">Loading user...</div>;
+  }
+
+  if (!viewedUser) {
+    return <div className="flex items-center justify-center h-full">User not found.</div>;
   }
 
   return (
     <div className="flex flex-col h-full bg-gray-100 dark:bg-gray-900">
       <header className="bg-white dark:bg-black text-gray-800 dark:text-gray-100 p-3 flex items-center shadow-sm z-10">
-        <button onClick={onBack} aria-label="Back to admin dashboard" className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full">
+        <button onClick={() => navigate(-1)} aria-label="Back to admin dashboard" className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full">
           <BackIcon className="w-6 h-6" />
         </button>
         <div className="ml-3">
@@ -183,12 +255,13 @@ const AdminChatViewer: React.FC<AdminChatViewerProps> = ({ adminUser, viewedUser
           <p className="text-sm text-gray-500 dark:text-gray-400">@{viewedUser.username}</p>
         </div>
       </header>
-      <AdminContactList viewedUser={viewedUser} onSelectChat={setSelectedChatPartner} />
+      <AdminContactList viewedUser={viewedUser} />
     </div>
   );
 };
 
-const AdminContactList: React.FC<AdminContactListProps> = ({ viewedUser, onSelectChat }) => {
+const AdminContactList: React.FC<AdminContactListProps> = ({ viewedUser }) => {
+  const navigate = useNavigate();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -217,7 +290,7 @@ const AdminContactList: React.FC<AdminContactListProps> = ({ viewedUser, onSelec
     <main className="flex-1 overflow-y-auto">
       <ul className="divide-y divide-gray-200 dark:divide-gray-700">
         {contacts.map((contact) => (
-          <li key={contact.uid} className="hover:bg-gray-200 dark:hover:bg-gray-800 cursor-pointer" onClick={() => onSelectChat(contact)}>
+          <li key={contact.uid} className="hover:bg-gray-200 dark:hover:bg-gray-800 cursor-pointer" onClick={() => navigate(`/admin/chat/${viewedUser.uid}/${contact.uid}`)}>
             <div className="flex items-center p-3">
               <Avatar photoURL={contact.photoURL} username={contact.username} />
               <div className="flex-1 ml-4 overflow-hidden">
@@ -231,14 +304,65 @@ const AdminContactList: React.FC<AdminContactListProps> = ({ viewedUser, onSelec
   );
 };
 
-const AdminChatThread: React.FC<AdminChatThreadProps> = ({ viewedUser, chatPartner, onBack }) => {
-  const [messages, setMessages] = useState<Message[]>([]);
+const AdminChatThread: React.FC<AdminChatThreadProps> = ({ adminUser }) => {
+  const { userId, partnerId } = useParams<{ userId: string; partnerId: string }>();
+  const navigate = useNavigate();
+  const [viewedUser, setViewedUser] = useState<UserProfile | null>(null);
+  const [chatPartner, setChatPartner] = useState<Contact | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (!userId || !partnerId) return;
+
+    const userRef = db.ref(`users/${userId}`);
+    const partnerRef = db.ref(`users/${partnerId}`);
+
+    let userListener: any, partnerListener: any;
+
+    const fetchData = async () => {
+      const userPromise = new Promise((resolve) => {
+        userListener = userRef.on('value', (snapshot) => {
+          resolve(snapshot.val());
+        });
+      });
+
+      const partnerPromise = new Promise((resolve) => {
+        partnerListener = partnerRef.on('value', (snapshot) => {
+          resolve(snapshot.val());
+        });
+      });
+
+      const [userData, partnerData] = await Promise.all([userPromise, partnerPromise]);
+
+      setViewedUser(userData as UserProfile);
+      setChatPartner(partnerData as Contact);
+      setIsLoading(false);
+    };
+
+    fetchData();
+
+    return () => {
+      if (userListener) userRef.off('value', userListener);
+      if (partnerListener) partnerRef.off('value', partnerListener);
+    };
+  }, [userId, partnerId]);
+
+  if (isLoading) {
+    return <div className="flex items-center justify-center h-full">Loading chat...</div>;
+  }
+
+  if (!viewedUser || !chatPartner) {
+    return <div className="flex items-center justify-center h-full">User or partner not found.</div>;
+  }
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [reports, setReports] = useState<Report[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const adminChatContainerRef = useRef<HTMLElement>(null);
   const [isCapturing, setIsCapturing] = useState(false);
   const [captureStatus, setCaptureStatus] = useState('');
   const { theme } = useTheme();
+
+  const { messageBubbleColor, receivedMessageBubbleColor, chatBackgroundColor, chatFontSize } = adminUser.settings?.appearance || {};
 
   const [isDateModalOpen, setIsDateModalOpen] = useState(false);
   const [filteredMessagesForCapture, setFilteredMessagesForCapture] = useState<Message[] | null>(null);
@@ -248,7 +372,7 @@ const AdminChatThread: React.FC<AdminChatThreadProps> = ({ viewedUser, chatPartn
   const [searchResults, setSearchResults] = useState<Message[]>([]);
   const [currentResultIndex, setCurrentResultIndex] = useState(-1);
 
-  const chatId = [viewedUser.uid, chatPartner.uid].sort().join('_');
+  const chatId = (viewedUser && chatPartner) ? [viewedUser.uid, chatPartner.uid].sort().join('_') : '';
 
   useEffect(() => {
     // FIX: Use compat version of query.
@@ -261,8 +385,51 @@ const AdminChatThread: React.FC<AdminChatThreadProps> = ({ viewedUser, chatPartn
       setIsLoading(false);
     });
 
-    return () => messagesRef.off('value', unsubscribe);
+    // Listen for reports
+    const reportsRef = db.ref('reports').orderByChild('chatId').equalTo(chatId);
+    const unsubscribeReports = reportsRef.on('value', (snapshot) => {
+        const data = snapshot.val() || {};
+        const reportList: Report[] = Object.keys(data).map(key => ({ ...data[key], id: key }));
+        setReports(reportList);
+    });
+
+    return () => {
+        messagesRef.off('value', unsubscribe);
+        reportsRef.off('value', unsubscribeReports);
+    };
   }, [chatId]);
+
+  const handleReportAction = async (action: 'dismiss' | 'delete', reportId?: string) => {
+    if (!reportId) return;
+    
+    const report = reports.find(r => r.id === reportId);
+    if (!report) return;
+
+    try {
+        if (action === 'dismiss') {
+            await db.ref(`reports/${reportId}`).update({ status: 'dismissed' });
+        } else if (action === 'delete') {
+            if (window.confirm("Are you sure you want to delete this message? This will also mark the report as action taken.")) {
+                const updates: { [key: string]: any } = {};
+                updates[`messages/${chatId}/${report.messageId}/isDeleted`] = true;
+                updates[`messages/${chatId}/${report.messageId}/text`] = "This message was deleted by an admin.";
+                updates[`reports/${reportId}/status`] = 'action_taken';
+                
+                // Also mark other reports for the same message as action taken
+                reports.forEach(r => {
+                    if (r.messageId === report.messageId && r.id !== reportId) {
+                        updates[`reports/${r.id}/status`] = 'action_taken';
+                    }
+                });
+
+                await db.ref().update(updates);
+            }
+        }
+    } catch (error) {
+        console.error("Error handling report action:", error);
+        alert("Failed to perform action. Please try again.");
+    }
+  };
 
   useEffect(() => {
     if (!isSearching) {
@@ -388,7 +555,7 @@ const AdminChatThread: React.FC<AdminChatThreadProps> = ({ viewedUser, chatPartn
       const canvas = await html2canvas(chatContainer, {
         useCORS: true,
         allowTaint: true,
-        backgroundColor: theme === 'dark' ? '#1f2937' : '#e5e7eb',
+        backgroundColor: '#000000',
         scale: window.devicePixelRatio,
       });
       
@@ -449,7 +616,7 @@ const AdminChatThread: React.FC<AdminChatThreadProps> = ({ viewedUser, chatPartn
 
 
   return (
-    <div className="flex flex-col h-full bg-gray-200 dark:bg-gray-800 relative">
+    <div className="flex flex-col h-full bg-gray-200 dark:bg-gray-800 relative" style={chatBackgroundColor ? { backgroundColor: chatBackgroundColor } : {}}>
       <header className={`bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-100 p-3 flex items-center shadow-sm z-10 ${isCapturing ? 'invisible' : ''}`}>
         {isSearching ? (
           <div className="flex items-center w-full animation-fade-in">
@@ -482,7 +649,7 @@ const AdminChatThread: React.FC<AdminChatThreadProps> = ({ viewedUser, chatPartn
           </div>
         ) : (
           <>
-            <button onClick={onBack} aria-label="Back to contact list" className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full">
+            <button onClick={() => navigate(-1)} aria-label="Back to contact list" className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full">
               <BackIcon className="w-6 h-6" />
             </button>
             <Avatar photoURL={chatPartner.photoURL} username={chatPartner.username} className="w-10 h-10 ml-2" />
@@ -525,6 +692,11 @@ const AdminChatThread: React.FC<AdminChatThreadProps> = ({ viewedUser, chatPartn
                         chatPartner={chatPartner}
                         searchQuery={searchQuery}
                         isCurrentSearchResult={isCurrentSearchResult}
+                        reports={reports}
+                        onAction={handleReportAction}
+                        messageBubbleColor={messageBubbleColor}
+                        receivedMessageBubbleColor={receivedMessageBubbleColor}
+                        chatFontSize={chatFontSize}
                     />
                 </React.Fragment>
             )

@@ -28,7 +28,11 @@ export const startOutgoingCall = async (
     );
     setLocalStream(stream);
 
-    const callId = db.ref(`calls/${partner.uid}`).push().key;
+    const callId = db.ref().push().key; // Generate a unique key for the call.
+if (!callId) throw new Error("Failed to create call ID");
+
+// Clean up any previous ICE candidates for this call ID.
+db.ref(`iceCandidates/${callId}`).remove();
     if (!callId) throw new Error("Failed to create call ID");
     
     // Log the outgoing call for the current user ONLY.
@@ -88,6 +92,9 @@ export const acceptIncomingCall = async (
       incomingCall.type === 'video' ? { video: true, audio: true } : { audio: true }
     );
     setLocalStream(stream);
+
+    // Clean up any previous ICE candidates for this call ID.
+    db.ref(`iceCandidates/${incomingCall.id}`).remove();
 
     const newActiveCall: ActiveCall = { 
       id: incomingCall.id, 
@@ -185,6 +192,9 @@ export const endCall = (
   user: User | null,
   db: Database,
 ) => {
+    if (activeCall) {
+    db.ref(`iceCandidates/${activeCall.id}`).remove();
+  }
   pcRef.current?.close();
   pcRef.current = null;
   localStream?.getTracks().forEach(track => track.stop());

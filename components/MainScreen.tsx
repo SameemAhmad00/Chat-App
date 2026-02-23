@@ -7,13 +7,12 @@ import { MenuIcon, ChatIcon, CogIcon, ArrowUpRightIcon, ArrowDownLeftIcon, Video
 import { formatPresenceTimestamp, formatTimestamp, formatCallDuration } from '../utils/format';
 import Avatar from './Avatar';
 import { useTheme } from '../contexts/ThemeContext';
-import type { NavigationState } from '../App';
+import { useNavigate } from 'react-router-dom';
 
 interface MainScreenProps {
   // FIX: Use User type from firebase compat library.
   user: firebase.User;
   profile: UserProfile;
-  onNavigate: (state: NavigationState) => void;
   onStartCall: (partner: Contact, type: 'video' | 'voice') => void;
   incomingCall: Call | null;
   onAcceptCall: () => void;
@@ -24,7 +23,8 @@ interface MainScreenProps {
 
 type Tab = 'chats' | 'requests' | 'calls';
 
-const MainScreen: React.FC<MainScreenProps> = ({ user, profile, onNavigate, onStartCall, incomingCall, onAcceptCall, onRejectCall, installPrompt, onInstallClick }) => {
+const MainScreen: React.FC<MainScreenProps> = ({ user, profile, onStartCall, incomingCall, onAcceptCall, onRejectCall, installPrompt, onInstallClick }) => {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<Tab>('chats');
   const [contacts, setContacts] = useState<EnrichedContact[]>([]);
   const [requests, setRequests] = useState<FriendRequest[]>([]);
@@ -133,7 +133,7 @@ const MainScreen: React.FC<MainScreenProps> = ({ user, profile, onNavigate, onSt
   const renderTabContent = () => {
     switch (activeTab) {
       case 'chats':
-        return <ChatList contacts={contacts} onSelectChat={(partner) => onNavigate({ view: 'chat', partner })} />;
+        return <ChatList contacts={contacts} onSelectChat={(partner) => navigate(`/chat/${partner.uid}`, { state: { partner } })} />;
       case 'requests':
         return <RequestList requests={requests} user={user} profile={profile} />;
       case 'calls':
@@ -146,8 +146,10 @@ const MainScreen: React.FC<MainScreenProps> = ({ user, profile, onNavigate, onSt
   const tabs: Tab[] = ['chats', 'requests', 'calls'];
   const activeTabIndex = tabs.indexOf(activeTab);
 
+  const { chatBackgroundColor } = profile.settings?.appearance || {};
+
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-gray-800 relative">
+    <div className="flex flex-col h-full bg-white dark:bg-gray-800 relative" style={chatBackgroundColor ? { backgroundColor: chatBackgroundColor } : {}}>
       <header className="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 p-4 flex justify-between items-center shadow-sm">
         <h1 className="text-xl font-bold text-green-600 dark:text-green-400">Sameem Chat</h1>
         <div>
@@ -176,7 +178,7 @@ const MainScreen: React.FC<MainScreenProps> = ({ user, profile, onNavigate, onSt
       </button>
 
       {isAddFriendModalOpen && <AddFriendModal profile={profile} onClose={() => setAddFriendModalOpen(false)} />}
-      {isProfileModalOpen && <ProfileModal user={user} profile={profile} onClose={() => setProfileModalOpen(false)} onNavigate={onNavigate} installPrompt={installPrompt} onInstallClick={onInstallClick} />}
+      {isProfileModalOpen && <ProfileModal user={user} profile={profile} onClose={() => setProfileModalOpen(false)} installPrompt={installPrompt} onInstallClick={onInstallClick} />}
       {incomingCall && <IncomingCallModal call={incomingCall} onAccept={onAcceptCall} onReject={onRejectCall} />}
       {selectedCallLog && <CallLogDetailModal log={selectedCallLog} onClose={() => setSelectedCallLog(null)} />}
       {deletingCallLog && <DeleteCallLogModal log={deletingCallLog} onConfirm={handleConfirmDeleteCallLog} onCancel={() => setDeletingCallLog(null)} />}
@@ -390,7 +392,8 @@ const AddFriendModal: React.FC<{profile: UserProfile, onClose: () => void}> = ({
     );
 }
 
-const ProfileModal: React.FC<{user: firebase.User, profile: UserProfile, onClose: () => void, onNavigate: (state: NavigationState) => void, installPrompt: any, onInstallClick: () => void}> = ({ user, profile, onClose, onNavigate, installPrompt, onInstallClick }) => {
+const ProfileModal: React.FC<{user: firebase.User, profile: UserProfile, onClose: () => void, installPrompt: any, onInstallClick: () => void}> = ({ user, profile, onClose, installPrompt, onInstallClick }) => {
+    const navigate = useNavigate();
     const [isUploading, setIsUploading] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     const [editedName, setEditedName] = useState(profile.name || '');
@@ -478,11 +481,11 @@ const ProfileModal: React.FC<{user: firebase.User, profile: UserProfile, onClose
             </div>
             <div className="mt-6 flex justify-between w-full items-center">
                 <div className="flex space-x-1">
-                     <button onClick={() => { onClose(); onNavigate({ view: 'settings' }); }} className="p-2 text-gray-500 dark:text-gray-400 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700" aria-label="Settings">
+                     <button onClick={() => { onClose(); navigate('/settings'); }} className="p-2 text-gray-500 dark:text-gray-400 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700" aria-label="Settings">
                         <CogIcon className="w-6 h-6"/>
                      </button>
                      {profile.isAdmin && (
-                        <button onClick={() => { onClose(); onNavigate({ view: 'admin' }); }} className="p-2 text-gray-500 dark:text-gray-400 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700" aria-label="Admin Panel">
+                        <button onClick={() => { onClose(); navigate('/admin'); }} className="p-2 text-gray-500 dark:text-gray-400 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700" aria-label="Admin Panel">
                             <ShieldCheckIcon className="w-6 h-6" />
                         </button>
                      )}

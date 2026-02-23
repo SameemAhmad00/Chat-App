@@ -11,6 +11,7 @@ import CallScreen from './components/CallScreen';
 import SettingsScreen from './components/SettingsScreen';
 import AdminScreen from './components/AdminScreen';
 import AdminChatViewer from './components/AdminChatViewer';
+import AdminUserDetail from './components/AdminUserDetail';
 import { endCall, startOutgoingCall, acceptIncomingCall } from './services/webrtc';
 import { setupNotifications } from './services/notifications';
 
@@ -21,7 +22,8 @@ export type NavigationState =
   | { view: 'call'; activeCall: ActiveCall }
   | { view: 'settings' }
   | { view: 'admin' }
-  | { view: 'adminChatViewer'; viewedUser: UserProfile };
+  | { view: 'adminChatViewer'; viewedUser: UserProfile }
+  | { view: 'adminUserDetail'; viewedUser: UserProfile };
 
 export type ActiveCall = {
   id: string;
@@ -77,21 +79,28 @@ const App: React.FC = () => {
   
   // Handle browser back button
   useEffect(() => {
-      const handlePopState = () => {
-          popView();
+      const handlePopState = (event: PopStateEvent) => {
+          // If we have state in the history, it means we navigated to a sub-view.
+          // If the user clicks back, we should pop the view.
+          if (navigationStack.length > 1) {
+              popView();
+          }
       };
-      
-      // We push a state to the history every time our navigation stack grows
-      // beyond 1, effectively creating a browser history entry for each new screen.
-      if (navigationStack.length > 1) {
-          window.history.pushState({ view: currentNavigationState.view }, '');
-      }
       
       window.addEventListener('popstate', handlePopState);
       
       return () => {
           window.removeEventListener('popstate', handlePopState);
       };
+  }, [navigationStack.length]);
+
+  // Push state to history when navigation stack grows
+  useEffect(() => {
+      if (navigationStack.length > 1) {
+          // Only push if the current state is not already at the top of the history
+          // This is a simple heuristic for this stack-based navigation
+          window.history.pushState({ stackLength: navigationStack.length }, '');
+      }
   }, [navigationStack.length]);
 
 
@@ -357,6 +366,12 @@ const App: React.FC = () => {
       case 'adminChatViewer':
         if (user && profile) {
             return <AdminChatViewer adminUser={profile} viewedUser={currentNavigationState.viewedUser} onBack={popView} />;
+        }
+        return null;
+
+      case 'adminUserDetail':
+        if (profile) {
+            return <AdminUserDetail currentUserProfile={profile} viewedUser={currentNavigationState.viewedUser} onBack={popView} onNavigate={pushView} />;
         }
         return null;
 

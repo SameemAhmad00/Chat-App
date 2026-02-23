@@ -4,11 +4,15 @@ import React, { useState, useEffect, useRef } from 'react';
 import firebase from 'firebase/compat/app';
 import { db } from '../services/firebase';
 import type { UserProfile, Contact, Message, TicTacToeGameState } from '../types';
-import { BackIcon, PhoneIcon, VideoIcon, SendIcon, MoreIcon, CheckIcon, PencilIcon, CancelIcon, ReplyIcon, TrashIcon, ProhibitIcon, GameIcon, FlagIcon } from './Icons';
+import { BackIcon, PhoneIcon, VideoIcon, SendIcon, MoreIcon, CheckIcon, PencilIcon, CancelIcon, ReplyIcon, TrashIcon, ProhibitIcon, GameIcon, FlagIcon, CameraIcon, ChatIcon } from './Icons';
 import { formatPresenceTimestamp } from '../utils/format';
 import { checkWinner } from '../utils/game';
 import Avatar from './Avatar';
 import GameModal from './GameModal';
+import { Modal, DateRangeModal } from './shared/Modals';
+import { useTheme } from '../contexts/ThemeContext';
+
+declare const html2canvas: any;
 
 interface ChatScreenProps {
   // FIX: Use User type from firebase compat library.
@@ -70,7 +74,9 @@ const MessageBubble: React.FC<{
   onScrollToMessage: (messageId: string) => void;
   onAcceptGameInvite: (msg: Message) => void;
   isGameActive: boolean;
-}> = ({ msg, isOwnMessage, onStartEdit, onStartReply, onDelete, onReport, onScrollToMessage, onAcceptGameInvite, isGameActive }) => {
+  messageBubbleColor?: string;
+  receivedMessageBubbleColor?: string;
+}> = ({ msg, isOwnMessage, onStartEdit, onStartReply, onDelete, onReport, onScrollToMessage, onAcceptGameInvite, isGameActive, messageBubbleColor, receivedMessageBubbleColor }) => {
   const [showMenu, setShowMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const [swipeX, setSwipeX] = useState(0);
@@ -239,7 +245,16 @@ const MessageBubble: React.FC<{
           )}
           <div
             onContextMenu={handleContextMenu}
-            className={`max-w-xs md:max-w-md lg:max-w-lg px-2 py-1 rounded-lg shadow-sm relative ${isOwnMessage ? 'bg-green-100 dark:bg-green-800 text-gray-800 dark:text-gray-100' : 'bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100'}`}
+            className={`max-w-xs md:max-w-md lg:max-w-lg px-2 py-1 rounded-lg shadow-sm relative ${
+              isOwnMessage 
+                ? (messageBubbleColor ? 'text-white' : 'bg-green-100 dark:bg-green-800 text-gray-800 dark:text-gray-100') 
+                : (receivedMessageBubbleColor ? 'text-white' : 'bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100')
+            }`}
+            style={
+              isOwnMessage 
+                ? (messageBubbleColor ? { backgroundColor: messageBubbleColor } : {})
+                : (receivedMessageBubbleColor ? { backgroundColor: receivedMessageBubbleColor } : {})
+            }
           >
             {msg.replyTo && (
               <button
@@ -332,14 +347,25 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ user, profile, partner, onBack,
   const [isPartnerTyping, setIsPartnerTyping] = useState(false);
   const [partnerPresence, setPartnerPresence] = useState<'online' | number | null>(null);
   const typingTimeoutRef = useRef<any>(null);
+
+  const { theme } = useTheme();
   
   const chatId = [user.uid, partner.uid].sort().join('_');
   const gameRef = db.ref(`games/${chatId}/tictactoe`);
   // FIX: Use compat version of ref.
   const userTypingRef = db.ref(`typingIndicators/${chatId}/${user.uid}`);
+
+
+
+
+
+  const displayedMessages = messages;
   const partnerTypingRef = db.ref(`typingIndicators/${chatId}/${partner.uid}`);
   const partnerPresenceRef = db.ref(`presence/${partner.uid}`);
 
+  const chatBackgroundColor = profile.settings?.appearance?.chatBackgroundColor || '';
+  const messageBubbleColor = profile.settings?.appearance?.messageBubbleColor || '';
+  const receivedMessageBubbleColor = profile.settings?.appearance?.receivedMessageBubbleColor || '';
 
   useEffect(() => {
     // FIX: Use compat version of query.
@@ -714,7 +740,10 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ user, profile, partner, onBack,
   };
 
   return (
-    <div className="flex flex-col h-full bg-gray-200 dark:bg-gray-800 relative">
+    <div 
+      className={`flex flex-col h-full relative ${!chatBackgroundColor ? 'bg-gray-200 dark:bg-gray-800' : ''}`}
+      style={chatBackgroundColor ? { backgroundColor: chatBackgroundColor } : {}}
+    >
       <header className={`bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-100 p-3 flex items-center shadow-sm z-30`}>
           <>
             <button onClick={onBack} aria-label="Back to chats" className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full"><BackIcon className="w-6 h-6" /></button>
@@ -729,6 +758,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ user, profile, partner, onBack,
               <button onClick={() => setMenuOpen(!isMenuOpen)} aria-label="More options" aria-haspopup="true" aria-expanded={isMenuOpen} className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full"><MoreIcon className="w-6 h-6" /></button>
               {isMenuOpen && (
                   <div role="menu" aria-orientation="vertical" className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-700 rounded-md shadow-lg py-1 z-40 animation-scale-in origin-top-right">
+
                       <button role="menuitem" onClick={handleSendGameInvite} className="flex items-center w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600">
                           <GameIcon className="w-5 h-5 mr-2" /> Play Tic-Tac-Toe
                       </button>
@@ -744,27 +774,36 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ user, profile, partner, onBack,
           </>
       </header>
       
-      <main ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-2 chat-message-list">
-        {messages.map((msg, index) => {
-            const prevMsg = messages[index - 1];
+      <main ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-2 chat-message-list" style={chatBackgroundColor ? { backgroundColor: chatBackgroundColor } : {}}>
+        {displayedMessages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-gray-500 dark:text-gray-400">
+            <ChatIcon className="w-16 h-16 mb-4" />
+            <p>Start a conversation with @{partner.username}</p>
+          </div>
+        ) : (
+          displayedMessages.map((msg, index) => {
+            const prevMsg = displayedMessages[index - 1];
             const showDateSeparator = (index === 0 || !isSameDay(new Date(prevMsg.ts), new Date(msg.ts)));
             return (
-                <React.Fragment key={msg.id}>
-                    {showDateSeparator && <DateSeparator date={new Date(msg.ts)} />}
-                    <MessageBubble
-                        msg={msg}
-                        isOwnMessage={msg.from === user.uid}
-                        onStartEdit={handleStartEdit}
-                        onStartReply={handleStartReply}
-                        onDelete={handleDeleteMessage}
-                        onReport={handleReportMessage}
-                        onScrollToMessage={handleScrollToMessage}
-                        onAcceptGameInvite={handleAcceptGameInvite}
-                        isGameActive={!!game && game.status === 'active'}
-                    />
-                </React.Fragment>
-            )
-        })}
+              <React.Fragment key={msg.id}>
+                {showDateSeparator && <DateSeparator date={new Date(msg.ts)} />}
+                <MessageBubble
+                  msg={msg}
+                  isOwnMessage={msg.from === user.uid}
+                  onStartEdit={handleStartEdit}
+                  onStartReply={handleStartReply}
+                  onDelete={handleDeleteMessage}
+                  onReport={handleReportMessage}
+                  onScrollToMessage={handleScrollToMessage}
+                  onAcceptGameInvite={handleAcceptGameInvite}
+                  isGameActive={!!game && game.status === 'active'}
+                  messageBubbleColor={messageBubbleColor}
+                  receivedMessageBubbleColor={receivedMessageBubbleColor}
+                />
+              </React.Fragment>
+            );
+          })
+        )}
         <div 
             className={`transition-all duration-300 ease-in-out transform ${isPartnerTyping ? 'opacity-100 translate-y-0 max-h-20' : 'opacity-0 -translate-y-2 max-h-0'}`}
             style={{ overflow: 'hidden' }}
@@ -877,6 +916,8 @@ const ReportModal: React.FC<{ message: Message; onClose: () => void; onSubmit: (
         </div>
     );
 };
+
+
 
 
 export default ChatScreen;

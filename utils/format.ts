@@ -11,6 +11,11 @@ export const formatTimestamp = (ts: number): string => {
   return date.toLocaleDateString();
 };
 
+export const formatTime = (ts: number): string => {
+  const date = new Date(ts);
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+};
+
 export const formatPresenceTimestamp = (ts: number): string => {
   const date = new Date(ts);
   const now = new Date();
@@ -50,5 +55,5 @@ export const formatCallDuration = (seconds: number): string => {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
-    return `${hours.toString()}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 }
