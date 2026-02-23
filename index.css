@@ -1,1 +1,134 @@
 @import "tailwindcss";
+      body {
+        font-family: 'Roboto', sans-serif;
+      }
+
+      /* General smooth transitions for interactive elements */
+      button, a {
+        transition: all 0.2s ease-in-out;
+      }
+
+      /* Animation Keyframes */
+      @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      
+      @keyframes fadeOut {
+        from { opacity: 1; }
+        to { opacity: 0; }
+      }
+
+      @keyframes fadeInUp {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      
+      @keyframes scaleIn {
+        from {
+          opacity: 0;
+          transform: scale(0.95);
+        }
+        to {
+          opacity: 1;
+          transform: scale(1);
+        }
+      }
+
+      @keyframes highlight {
+        from { background-color: rgba(110, 231, 183, 0.5); } /* green-300 with opacity */
+        to { background-color: transparent; }
+      }
+      .highlight-message {
+        animation: highlight 2s ease-out;
+        border-radius: 0.5rem; /* Match message bubble rounding */
+      }
+      .highlight-search-result-active {
+        background-color: rgba(250, 204, 21, 0.5); /* yellow-300 with opacity */
+        border-radius: 0.5rem;
+        transition: background-color 0.3s ease-in-out;
+        box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.7);
+      }
+
+      @keyframes incomingMessageAnimation {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      
+      @keyframes outgoingMessageAnimation {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      @keyframes shake {
+        10%, 90% { transform: translate3d(-1px, 0, 0); }
+        20%, 80% { transform: translate3d(2px, 0, 0); }
+        30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+        40%, 60% { transform: translate3d(4px, 0, 0); }
+      }
+
+
+      /* Animation Utility Classes */
+      .animation-fade-in {
+        animation: fadeIn 0.2s ease-in-out;
+      }
+      
+      .animation-fade-in-up {
+        animation: fadeInUp 0.3s ease-out;
+      }
+      
+      .animation-scale-in {
+        animation: scaleIn 0.2s ease-out;
+      }
+
+      .animate-incoming-message {
+        animation: incomingMessageAnimation 0.3s ease-out forwards;
+      }
+      
+      .animate-outgoing-message {
+        animation: outgoingMessageAnimation 0.2s ease-out forwards;
+      }
+
+      .animate-shake {
+        animation: shake 0.6s cubic-bezier(.36,.07,.19,.97) both;
+      }
+
+      /* Utility for hiding scrollbar during screenshot capture */
+      .hide-scrollbar-for-capture::-webkit-scrollbar {
+        display: none;
+      }
+      .hide-scrollbar-for-capture {
+        -ms-overflow-style: none;  /* IE and Edge */
+        scrollbar-width: none;  /* Firefox */
+      }
+      
+      /* For screen-reader accessibility */
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border-width: 0;
+      }
