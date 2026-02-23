@@ -11,6 +11,9 @@ import { formatPresenceTimestamp, formatTime } from '../utils/format';
 
 interface AdminUserDetailProps {
   currentUserProfile: UserProfile;
+  viewedUser?: UserProfile;
+  onBack?: () => void;
+  onNavigate?: (state: any) => void;
 }
 
 const ConfirmationModal: React.FC<{
