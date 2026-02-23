@@ -1,39 +1,29 @@
-import { StrictMode } from "react";
-import { createRoot } from "react-dom/client";
-import { BrowserRouter } from "react-router-dom";
 
-import App from "./App";
-import { ThemeProvider } from "./contexts/ThemeContext";
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+import { ThemeProvider } from './contexts/ThemeContext';
 
-// Register Service Worker (optional but safe)
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker
-      .register("/sw.js")
-      .then((registration) => {
-        console.log(
-          "Service Worker registered with scope:",
-          registration.scope
-        );
-      })
-      .catch((error) => {
-        console.error("Service Worker registration failed:", error);
-      });
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    // FIX: Use an absolute URL for registration to prevent cross-origin errors.
+    const swUrl = `${window.location.origin}/sw.js`;
+    navigator.serviceWorker.register(swUrl)
+      .then(registration => console.log('Service Worker registered with scope: ', registration.scope))
+      .catch(err => console.error('Service Worker registration failed: ', err));
   });
 }
 
-const rootElement = document.getElementById("root");
-
+const rootElement = document.getElementById('root');
 if (!rootElement) {
-  throw new Error("Root element not found");
+  throw new Error("Could not find root element to mount to");
 }
 
-createRoot(rootElement).render(
-  <StrictMode>
+const root = ReactDOM.createRoot(rootElement);
+root.render(
+  <React.StrictMode>
     <ThemeProvider>
-      <BrowserRouter>
-        <App />
-      </BrowserRouter>
+      <App />
     </ThemeProvider>
-  </StrictMode>
+  </React.StrictMode>
 );
