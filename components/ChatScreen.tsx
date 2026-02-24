@@ -4,11 +4,15 @@ import React, { useState, useEffect, useRef } from 'react';
 import firebase from 'firebase/compat/app';
 import { db } from '../services/firebase';
 import type { UserProfile, Contact, Message, TicTacToeGameState } from '../types';
-import { BackIcon, PhoneIcon, VideoIcon, SendIcon, MoreIcon, CheckIcon, PencilIcon, CancelIcon, ReplyIcon, TrashIcon, ProhibitIcon, GameIcon } from './Icons';
+import { BackIcon, PhoneIcon, VideoIcon, SendIcon, MoreIcon, CheckIcon, PencilIcon, CancelIcon, ReplyIcon, TrashIcon, ProhibitIcon, GameIcon, FlagIcon, CameraIcon, ChatIcon } from './Icons';
 import { formatPresenceTimestamp } from '../utils/format';
 import { checkWinner } from '../utils/game';
 import Avatar from './Avatar';
 import GameModal from './GameModal';
+import { Modal, DateRangeModal } from './shared/Modals';
+import { useTheme } from '../contexts/ThemeContext';
+
+declare const html2canvas: any;
 
 interface ChatScreenProps {
   // FIX: Use User type from firebase compat library.
@@ -66,10 +70,13 @@ const MessageBubble: React.FC<{
   onStartEdit: (msg: Message) => void;
   onStartReply: (msg: Message) => void;
   onDelete: (msg: Message) => void;
+  onReport: (msg: Message) => void;
   onScrollToMessage: (messageId: string) => void;
   onAcceptGameInvite: (msg: Message) => void;
   isGameActive: boolean;
-}> = ({ msg, isOwnMessage, onStartEdit, onStartReply, onDelete, onScrollToMessage, onAcceptGameInvite, isGameActive }) => {
+  messageBubbleColor?: string;
+  receivedMessageBubbleColor?: string;
+}> = ({ msg, isOwnMessage, onStartEdit, onStartReply, onDelete, onReport, onScrollToMessage, onAcceptGameInvite, isGameActive, messageBubbleColor, receivedMessageBubbleColor }) => {
   const [showMenu, setShowMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const [swipeX, setSwipeX] = useState(0);
@@ -204,7 +211,7 @@ const MessageBubble: React.FC<{
   return (
     <div
       id={`message-${msg.id}`}
-      className={`flex items-start group chat-message ${isOwnMessage ? 'justify-end' : 'justify-start'} ${!isOwnMessage ? 'animate-incoming-message' : ''}`}
+      className={`flex items-start group chat-message ${isOwnMessage ? 'justify-end animate-outgoing-message' : 'justify-start animate-incoming-message'}`}
       tabIndex={msg.isDeleted ? undefined : 0}
       onKeyDown={handleKeyDown}
       aria-haspopup="true"
@@ -238,7 +245,16 @@ const MessageBubble: React.FC<{
           )}
           <div
             onContextMenu={handleContextMenu}
-            className={`max-w-xs md:max-w-md lg:max-w-lg px-2 py-1 rounded-lg shadow-sm relative ${isOwnMessage ? 'bg-green-100 dark:bg-green-800 text-gray-800 dark:text-gray-100' : 'bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100'}`}
+            className={`max-w-xs md:max-w-md lg:max-w-lg px-2 py-1 rounded-lg shadow-sm relative ${
+              isOwnMessage 
+                ? (messageBubbleColor ? 'text-white' : 'bg-green-100 dark:bg-green-800 text-gray-800 dark:text-gray-100') 
+                : (receivedMessageBubbleColor ? 'text-white' : 'bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100')
+            }`}
+            style={
+              isOwnMessage 
+                ? (messageBubbleColor ? { backgroundColor: messageBubbleColor } : {})
+                : (receivedMessageBubbleColor ? { backgroundColor: receivedMessageBubbleColor } : {})
+            }
           >
             {msg.replyTo && (
               <button
@@ -288,6 +304,16 @@ const MessageBubble: React.FC<{
                     Delete
                   </button>
                 )}
+                {!isOwnMessage && (
+                   <button
+                    role="menuitem"
+                    onClick={() => { onReport(msg); setShowMenu(false); }}
+                    className="flex items-center w-full text-left px-4 py-2 text-sm text-yellow-600 dark:text-yellow-400 hover:bg-gray-100 dark:hover:bg-gray-500"
+                  >
+                    <FlagIcon className="w-4 h-4 mr-2" />
+                    Report
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -312,6 +338,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ user, profile, partner, onBack,
   const [newMessage, setNewMessage] = useState('');
   const [editingMessage, setEditingMessage] = useState<Message | null>(null);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const [reportingMessage, setReportingMessage] = useState<Message | null>(null);
   const [game, setGame] = useState<TicTacToeGameState | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLElement>(null);
@@ -320,14 +347,95 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ user, profile, partner, onBack,
   const [isPartnerTyping, setIsPartnerTyping] = useState(false);
   const [partnerPresence, setPartnerPresence] = useState<'online' | number | null>(null);
   const typingTimeoutRef = useRef<any>(null);
+  const [isCapturing, setIsCapturing] = useState(false);
+  const [captureStatus, setCaptureStatus] = useState('');
+  const [isDateModalOpen, setIsDateModalOpen] = useState(false);
+  const [filteredMessagesForCapture, setFilteredMessagesForCapture] = useState<Message[] | null>(null);
+  const { theme } = useTheme();
   
   const chatId = [user.uid, partner.uid].sort().join('_');
   const gameRef = db.ref(`games/${chatId}/tictactoe`);
   // FIX: Use compat version of ref.
   const userTypingRef = db.ref(`typingIndicators/${chatId}/${user.uid}`);
+
+  const handleStartCapture = (startDate: string, endDate: string) => {
+    const startTimestamp = new Date(startDate).setHours(0, 0, 0, 0);
+    const endTimestamp = new Date(endDate).setHours(23, 59, 59, 999);
+
+    const filtered = messages.filter(msg => {
+      const msgTimestamp = msg.ts;
+      return msgTimestamp >= startTimestamp && msgTimestamp <= endTimestamp;
+    });
+    setFilteredMessagesForCapture(filtered);
+    setIsDateModalOpen(false);
+    captureChat();
+  };
+
+  const captureChat = async () => {
+    const chatContainer = chatContainerRef.current;
+    if (!chatContainer) {
+      alert("Could not find chat container to capture.");
+      return;
+    }
+    setIsCapturing(true);
+
+    const originalHeight = chatContainer.style.height;
+    const originalOverflow = chatContainer.style.overflow;
+
+    try {
+      setCaptureStatus('Preparing for capture...');
+      
+      chatContainer.classList.add('hide-scrollbar-for-capture');
+      chatContainer.style.height = 'auto';
+      chatContainer.style.overflow = 'visible';
+      chatContainer.scrollTop = 0;
+
+      const exportHeader = document.createElement('div');
+      exportHeader.className = 'p-4 bg-gray-200 dark:bg-gray-800 text-gray-800 dark:text-gray-100 flex flex-col items-center border-b-2 border-gray-300 dark:border-gray-700 pb-4 mb-4';
+      exportHeader.innerHTML = `
+          <h2 class="text-xl font-bold text-center" style="word-break: break-word;">Chat between @${profile.username} and @${partner.username}</h2>
+          <p class="text-sm text-gray-500 dark:text-gray-400">Chat History</p>
+          <p class="text-xs text-gray-400 dark:text-gray-300 mt-1">Exported by ${profile.username} on ${new Date().toLocaleString()}</p>
+      `;
+      chatContainer.prepend(exportHeader);
+      
+      setCaptureStatus('Generating high-quality image...');
+      const canvas = await html2canvas(chatContainer, {
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: chatBackgroundColor || (theme === 'dark' ? '#1f2937' : '#e5e7eb'),
+        scale: window.devicePixelRatio,
+      });
+      
+      setCaptureStatus('Preparing download...');
+      const link = document.createElement('a');
+      link.download = `sameem-chat-${profile.username}-${partner.username}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      exportHeader.remove();
+      chatContainer.style.height = originalHeight;
+      chatContainer.style.overflow = originalOverflow;
+      chatContainer.classList.remove('hide-scrollbar-for-capture');
+      
+    } catch (error) {
+      console.error("Failed to capture chat:", error);
+      alert("Sorry, something went wrong while capturing the chat.");
+    } finally {
+      setIsCapturing(false);
+      setCaptureStatus('');
+      setFilteredMessagesForCapture(null);
+    }
+  };
+
+  const displayedMessages = filteredMessagesForCapture || messages;
   const partnerTypingRef = db.ref(`typingIndicators/${chatId}/${partner.uid}`);
   const partnerPresenceRef = db.ref(`presence/${partner.uid}`);
 
+  const chatBackgroundColor = profile.settings?.appearance?.chatBackgroundColor || '';
+  const messageBubbleColor = profile.settings?.appearance?.messageBubbleColor || '';
+  const receivedMessageBubbleColor = profile.settings?.appearance?.receivedMessageBubbleColor || '';
 
   useEffect(() => {
     // FIX: Use compat version of query.
@@ -610,6 +718,38 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ user, profile, partner, onBack,
         });
     }
   };
+  
+  const handleReportMessage = (msg: Message) => {
+    setReportingMessage(msg);
+  };
+  
+  const handleReportSubmit = async (reason: string) => {
+    if (!reportingMessage) return;
+    
+    const reportData = {
+        chatId: chatId,
+        messageId: reportingMessage.id,
+        messageText: reportingMessage.text,
+        reportedUser: {
+            uid: partner.uid,
+            username: partner.username,
+            photoURL: partner.photoURL || null
+        },
+        reporterUser: {
+            uid: user.uid,
+            username: profile.username,
+        },
+        reason: reason,
+        ts: firebase.database.ServerValue.TIMESTAMP,
+        status: 'pending',
+    };
+    
+    await db.ref('reports').push(reportData);
+    
+    alert('Thank you for your report. An admin will review it shortly.');
+    setReportingMessage(null);
+  };
+
 
   const handleScrollToMessage = (messageId: string) => {
     const element = document.getElementById(`message-${messageId}`);
@@ -670,53 +810,76 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ user, profile, partner, onBack,
   };
 
   return (
-    <div className="flex flex-col h-full bg-gray-200 dark:bg-gray-800 relative">
+    <div 
+      className={`flex flex-col h-full relative ${!chatBackgroundColor ? 'bg-gray-200 dark:bg-gray-800' : ''}`}
+      style={chatBackgroundColor ? { backgroundColor: chatBackgroundColor } : {}}
+    >
       <header className={`bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-100 p-3 flex items-center shadow-sm z-30`}>
-        <button onClick={onBack} aria-label="Back to chats" className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full"><BackIcon className="w-6 h-6" /></button>
-        <Avatar photoURL={partner.photoURL} username={partner.username} className="w-10 h-10 ml-2" />
-        <div className="flex-1 ml-3">
-          <h2 className="font-bold text-lg leading-tight">{partner.username}</h2>
-          {renderPresenceHeader()}
-        </div>
-        <button onClick={() => onStartCall(partner, 'voice')} aria-label={`Start voice call with ${partner.username}`} className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full"><PhoneIcon className="w-6 h-6" /></button>
-        <button onClick={() => onStartCall(partner, 'video')} aria-label={`Start video call with ${partner.username}`} className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full"><VideoIcon className="w-6 h-6" /></button>
-        <div className="relative">
-          <button onClick={() => setMenuOpen(!isMenuOpen)} aria-label="More options" aria-haspopup="true" aria-expanded={isMenuOpen} className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full"><MoreIcon className="w-6 h-6" /></button>
-          {isMenuOpen && (
-              <div role="menu" aria-orientation="vertical" className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-700 rounded-md shadow-lg py-1 z-40 animation-scale-in origin-top-right">
-                  <button role="menuitem" onClick={handleSendGameInvite} className="flex items-center w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600">
-                      <GameIcon className="w-5 h-5 mr-2" /> Play Tic-Tac-Toe
-                  </button>
-                  <button role="menuitem" onClick={handleBlockUser} className="block w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600">
-                      {profile.blocked && profile.blocked[partner.uid] ? 'Unblock User' : 'Block User'}
-                  </button>
-                  <button role="menuitem" onClick={handleDeleteChat} className="block w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-gray-100 dark:hover:bg-gray-600">
-                      Delete Chat
-                  </button>
-              </div>
-          )}
-        </div>
+          <>
+            <button onClick={onBack} aria-label="Back to chats" className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full"><BackIcon className="w-6 h-6" /></button>
+            <Avatar photoURL={partner.photoURL} username={partner.username} className="w-10 h-10 ml-2" />
+            <div className="flex-1 ml-3">
+              <h2 className="font-bold text-lg leading-tight">{partner.username}</h2>
+              {renderPresenceHeader()}
+            </div>
+            <button onClick={() => onStartCall(partner, 'voice')} aria-label={`Start voice call with ${partner.username}`} className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full"><PhoneIcon className="w-6 h-6" /></button>
+            <button onClick={() => onStartCall(partner, 'video')} aria-label={`Start video call with ${partner.username}`} className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full"><VideoIcon className="w-6 h-6" /></button>
+            <div className="relative">
+              <button onClick={() => setMenuOpen(!isMenuOpen)} aria-label="More options" aria-haspopup="true" aria-expanded={isMenuOpen} className="p-2 text-green-600 dark:text-green-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full"><MoreIcon className="w-6 h-6" /></button>
+              {isMenuOpen && (
+                  <div role="menu" aria-orientation="vertical" className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-700 rounded-md shadow-lg py-1 z-40 animation-scale-in origin-top-right">
+                      <button onClick={() => {
+                        setIsDateModalOpen(true);
+                        setMenuOpen(false);
+                      }} className="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600">
+                        <CameraIcon className="w-5 h-5 mr-2" />
+                        Capture Chat
+                      </button>
+                      <button role="menuitem" onClick={handleSendGameInvite} className="flex items-center w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600">
+                          <GameIcon className="w-5 h-5 mr-2" /> Play Tic-Tac-Toe
+                      </button>
+                      <button role="menuitem" onClick={handleBlockUser} className="block w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600">
+                          {profile.blocked && profile.blocked[partner.uid] ? 'Unblock User' : 'Block User'}
+                      </button>
+                      <button role="menuitem" onClick={handleDeleteChat} className="block w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-gray-100 dark:hover:bg-gray-600">
+                          Delete Chat
+                      </button>
+                  </div>
+              )}
+            </div>
+          </>
       </header>
       
-      <main ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-2 chat-message-list">
-        {messages.map((msg, index) => {
-            const showDateSeparator = index === 0 || !isSameDay(new Date(messages[index - 1].ts), new Date(msg.ts));
+      <main ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-2 chat-message-list" style={chatBackgroundColor ? { backgroundColor: chatBackgroundColor } : {}}>
+        {displayedMessages.length === 0 && !isCapturing ? (
+          <div className="flex flex-col items-center justify-center h-full text-gray-500 dark:text-gray-400">
+            <ChatIcon className="w-16 h-16 mb-4" />
+            <p>Start a conversation with @{partner.username}</p>
+          </div>
+        ) : (
+          displayedMessages.map((msg, index) => {
+            const prevMsg = displayedMessages[index - 1];
+            const showDateSeparator = (index === 0 || !isSameDay(new Date(prevMsg.ts), new Date(msg.ts)));
             return (
-                <React.Fragment key={msg.id}>
-                    {showDateSeparator && <DateSeparator date={new Date(msg.ts)} />}
-                    <MessageBubble
-                        msg={msg}
-                        isOwnMessage={msg.from === user.uid}
-                        onStartEdit={handleStartEdit}
-                        onStartReply={handleStartReply}
-                        onDelete={handleDeleteMessage}
-                        onScrollToMessage={handleScrollToMessage}
-                        onAcceptGameInvite={handleAcceptGameInvite}
-                        isGameActive={!!game && game.status === 'active'}
-                    />
-                </React.Fragment>
-            )
-        })}
+              <React.Fragment key={msg.id}>
+                {showDateSeparator && <DateSeparator date={new Date(msg.ts)} />}
+                <MessageBubble
+                  msg={msg}
+                  isOwnMessage={msg.from === user.uid}
+                  onStartEdit={handleStartEdit}
+                  onStartReply={handleStartReply}
+                  onDelete={handleDeleteMessage}
+                  onReport={handleReportMessage}
+                  onScrollToMessage={handleScrollToMessage}
+                  onAcceptGameInvite={handleAcceptGameInvite}
+                  isGameActive={!!game && game.status === 'active'}
+                  messageBubbleColor={messageBubbleColor}
+                  receivedMessageBubbleColor={receivedMessageBubbleColor}
+                />
+              </React.Fragment>
+            );
+          })
+        )}
         <div 
             className={`transition-all duration-300 ease-in-out transform ${isPartnerTyping ? 'opacity-100 translate-y-0 max-h-20' : 'opacity-0 -translate-y-2 max-h-0'}`}
             style={{ overflow: 'hidden' }}
@@ -735,6 +898,9 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ user, profile, partner, onBack,
       {game && (game.status === 'active' || game.status === 'won' || game.status === 'draw' || game.status === 'forfeited') && (
         <GameModal game={game} user={profile} partner={partner} onMakeMove={handleMakeMove} onForfeit={handleForfeit} onClose={handleCloseGameModal} />
       )}
+      
+      {reportingMessage && <ReportModal message={reportingMessage} onClose={() => setReportingMessage(null)} onSubmit={handleReportSubmit} />}
+
 
       <div className={`bg-gray-100 dark:bg-gray-900 p-3 border-t border-gray-200 dark:border-gray-700 transition-all duration-200`}>
         {replyingTo && (
@@ -774,15 +940,67 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ user, profile, partner, onBack,
           <button
             type="submit"
             aria-label={editingMessage ? "Save changes" : "Send message"}
-            className="ml-3 p-3 bg-green-500 text-white rounded-full transition-all duration-200 ease-in-out transform hover:bg-green-600 disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:scale-90"
+            className="ml-3 p-3 bg-green-500 text-white rounded-full transition-all duration-200 ease-in-out transform hover:bg-green-600 hover:scale-105 disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:scale-90"
             disabled={!newMessage.trim()}
           >
             <SendIcon className="w-6 h-6" />
           </button>
         </form>
       </div>
+      {isCapturing && (
+        <div className="absolute inset-0 bg-black bg-opacity-60 flex flex-col items-center justify-center z-50 animation-fade-in" role="status" aria-live="polite">
+          <div className="w-8 h-8 border-4 border-t-transparent border-white rounded-full animate-spin"></div>
+          <p className="text-white mt-4 text-lg">{captureStatus || 'Preparing capture...'}</p>
+        </div>
+      )}
+      {isDateModalOpen && <DateRangeModal onClose={() => setIsDateModalOpen(false)} onCapture={handleStartCapture} />}
     </div>
   );
 };
+
+const ReportModal: React.FC<{ message: Message; onClose: () => void; onSubmit: (reason: string) => void }> = ({ message, onClose, onSubmit }) => {
+    const [reason, setReason] = useState('');
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+    
+    useEffect(() => {
+        textareaRef.current?.focus();
+    }, []);
+
+    const handleSubmit = () => {
+        if (reason.trim()) {
+            onSubmit(reason.trim());
+        }
+    };
+    
+    return (
+        <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 animation-fade-in" role="dialog" aria-modal="true" aria-labelledby="report-modal-title">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-sm animation-scale-in">
+                <h2 id="report-modal-title" className="text-xl font-bold text-gray-800 dark:text-gray-100">Report Message</h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Please provide a reason for reporting this message.</p>
+                
+                <div className="my-4 p-2 bg-gray-100 dark:bg-gray-700 rounded-md">
+                    <p className="text-sm text-gray-600 dark:text-gray-300 italic truncate">"{message.text}"</p>
+                </div>
+                
+                <textarea
+                    ref={textareaRef}
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                    placeholder="E.g., harassment, spam, inappropriate content..."
+                    aria-label="Reason for reporting"
+                    className="w-full h-24 p-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 text-gray-900 dark:text-white"
+                />
+                
+                <div className="mt-4 flex justify-end space-x-2">
+                    <button onClick={onClose} className="px-4 py-2 text-green-600 dark:text-green-400 rounded hover:bg-gray-100 dark:hover:bg-gray-700 font-semibold">Cancel</button>
+                    <button onClick={handleSubmit} disabled={!reason.trim()} className="px-4 py-2 bg-yellow-500 text-white rounded hover:bg-yellow-600 font-semibold disabled:bg-gray-400 dark:disabled:bg-gray-600">Submit Report</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+
+
 
 export default ChatScreen;
