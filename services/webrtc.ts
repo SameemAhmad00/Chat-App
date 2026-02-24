@@ -50,6 +50,8 @@ export const startOutgoingCall = async (
       setRemoteStream(event.streams[0]);
     };
 
+    const unsubscribers = setupCallListeners(callId, newActiveCall, db, pcRef);
+
     const offer = await pcRef.current.createOffer();
     await pcRef.current.setLocalDescription(offer);
 
@@ -63,7 +65,6 @@ export const startOutgoingCall = async (
     };
     await db.ref(`calls/${partner.uid}/${callId}`).set(callPayload);
     
-    const unsubscribers = setupCallListeners(callId, newActiveCall, db, pcRef);
     return { activeCall: newActiveCall, unsubscribers };
 
   } catch (error) {
@@ -113,13 +114,14 @@ export const acceptIncomingCall = async (
       setRemoteStream(event.streams[0]);
     };
     
+    const unsubscribers = setupCallListeners(incomingCall.id, newActiveCall, db, pcRef);
+
     await pcRef.current.setRemoteDescription(new RTCSessionDescription(incomingCall.offer));
     const answer = await pcRef.current.createAnswer();
     await pcRef.current.setLocalDescription(answer);
 
     await db.ref(`calls/${user.uid}/${incomingCall.id}/answer`).set(answer);
 
-    const unsubscribers = setupCallListeners(incomingCall.id, newActiveCall, db, pcRef);
     return { activeCall: newActiveCall, unsubscribers };
     
   } catch (error) {
@@ -149,9 +151,31 @@ export const setupCallListeners = (
   
   const remoteRole = activeCall.role === 'caller' ? 'callee' : 'caller';
   const remoteIceCandidateRef = db.ref(`iceCandidates/${callId}/${remoteRole}`);
+  const iceCandidatesQueue: RTCIceCandidateInit[] = [];
+  
+  const processIceQueue = () => {
+    if (pc.remoteDescription) {
+      while (iceCandidatesQueue.length > 0) {
+        const candidate = iceCandidatesQueue.shift();
+        if (candidate) {
+          pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => console.error("Error adding ICE candidate:", e));
+        }
+      }
+    }
+  };
+
+  pc.onsignalingstatechange = () => {
+    processIceQueue();
+  };
+
   const iceCallback = (snapshot: firebase.database.DataSnapshot) => {
     if (snapshot.exists()) {
-      pc.addIceCandidate(new RTCIceCandidate(snapshot.val())).catch(e => console.error("Error adding ICE candidate:", e));
+      const candidate = snapshot.val();
+      if (pc.remoteDescription) {
+        pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => console.error("Error adding ICE candidate:", e));
+      } else {
+        iceCandidatesQueue.push(candidate);
+      }
     }
   };
   remoteIceCandidateRef.on('child_added', iceCallback);
@@ -165,6 +189,7 @@ export const setupCallListeners = (
         if (pc.signalingState !== 'stable' && pc.remoteDescription === null) {
           try {
             await pc.setRemoteDescription(new RTCSessionDescription(answer));
+            processIceQueue();
           } catch (e) {
             console.error("Failed to set remote description from answer:", e);
           }
