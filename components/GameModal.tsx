@@ -74,7 +74,14 @@ const GameModal: React.FC<GameModalProps> = ({ game, user, partner, onMakeMove, 
 
   return (
     <div className="absolute inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 z-50 animation-fade-in" role="dialog" aria-modal="true" aria-labelledby="game-title">
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-6 w-full max-w-sm animation-scale-in flex flex-col items-center">
+      <div className="relative bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-6 w-full max-w-sm animation-scale-in flex flex-col items-center">
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+          aria-label="Close game"
+        >
+          <CancelIcon className="w-6 h-6" />
+        </button>
         <h2 id="game-title" className="text-2xl font-bold text-gray-800 dark:text-gray-100">Tic-Tac-Toe</h2>
         <p className="mt-2 text-gray-600 dark:text-gray-400">
           <span className="font-semibold text-blue-500">{user.username} (X)</span> vs <span className="font-semibold text-red-500">{partner.username} (O)</span>

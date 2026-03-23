@@ -1,5 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { Filesystem, Directory } from '@capacitor/filesystem';
 // FIX: Use firebase v9 compat imports to resolve module errors.
 import { db } from '../services/firebase';
 import type { UserProfile, Contact, Message } from '../types';
@@ -33,9 +35,9 @@ interface AdminContactListProps {
 }
 
 const isSameDay = (d1: Date, d2: Date) => {
-    return d1.getFullYear() === d2.getFullYear() &&
-        d1.getMonth() === d2.getMonth() &&
-        d1.getDate() === d2.getDate();
+  return d1.getFullYear() === d2.getFullYear() &&
+    d1.getMonth() === d2.getMonth() &&
+    d1.getDate() === d2.getDate();
 }
 
 const DateSeparator: React.FC<{ date: Date }> = ({ date }) => (
@@ -80,61 +82,61 @@ const AdminMessageBubble: React.FC<{
   messageBubbleColor?: string;
   receivedMessageBubbleColor?: string;
 }> = ({ msg, isFromViewedUser, onScrollToMessage, viewedUser, chatPartner, searchQuery, isCurrentSearchResult, reports, onAction, messageBubbleColor, receivedMessageBubbleColor }) => {
-  
+
   const msgReports = reports?.filter(r => r.messageId === msg.id && r.status === 'pending') || [];
   const isFlagged = msgReports.length > 0;
 
   const renderSpecialMessage = () => {
     if (msg.type === 'game_invitation') {
-        const senderUsername = msg.from === viewedUser.uid ? viewedUser.username : chatPartner.username;
-        return (
-             <div 
-               className={`flex items-center p-3 rounded-lg ${isFromViewedUser ? (messageBubbleColor ? 'text-white' : 'bg-green-100 dark:bg-green-800') : (receivedMessageBubbleColor ? 'text-white' : 'bg-white dark:bg-gray-700')}`}
-               style={
-                 isFromViewedUser 
-                   ? (messageBubbleColor ? { backgroundColor: messageBubbleColor } : {})
-                   : (receivedMessageBubbleColor ? { backgroundColor: receivedMessageBubbleColor } : {})
-               }
-             >
-                <GameIcon className={`w-10 h-10 ${isFromViewedUser && messageBubbleColor ? 'text-white' : 'text-green-500'}`} />
-                <div className="ml-3">
-                    <p className={`font-semibold ${isFromViewedUser && messageBubbleColor ? 'text-white' : 'text-gray-800 dark:text-gray-100'}`}>{senderUsername} sent a game invite.</p>
-                    <p className={`text-sm ${isFromViewedUser && messageBubbleColor ? 'text-white/80' : 'text-gray-500 dark:text-gray-400'}`}>Status: {msg.invitationStatus || 'pending'}</p>
-                </div>
-            </div>
-        );
+      const senderUsername = msg.from === viewedUser.uid ? viewedUser.username : chatPartner.username;
+      return (
+        <div
+          className={`flex items-center p-3 rounded-lg ${isFromViewedUser ? (messageBubbleColor ? 'text-white' : 'bg-green-100 dark:bg-green-800') : (receivedMessageBubbleColor ? 'text-white' : 'bg-white dark:bg-gray-700')}`}
+          style={
+            isFromViewedUser
+              ? (messageBubbleColor ? { backgroundColor: messageBubbleColor } : {})
+              : (receivedMessageBubbleColor ? { backgroundColor: receivedMessageBubbleColor } : {})
+          }
+        >
+          <GameIcon className={`w-10 h-10 ${isFromViewedUser && messageBubbleColor ? 'text-white' : 'text-green-500'}`} />
+          <div className="ml-3">
+            <p className={`font-semibold ${isFromViewedUser && messageBubbleColor ? 'text-white' : 'text-gray-800 dark:text-gray-100'}`}>{senderUsername} sent a game invite.</p>
+            <p className={`text-sm ${isFromViewedUser && messageBubbleColor ? 'text-white/80' : 'text-gray-500 dark:text-gray-400'}`}>Status: {msg.invitationStatus || 'pending'}</p>
+          </div>
+        </div>
+      );
     }
     if (msg.type === 'game_result') {
-        let resultText = '';
-        if (msg.gameResult?.result === 'draw') {
-            resultText = "The Tic-Tac-Toe game was a draw.";
-        } else {
-            resultText = `@${msg.gameResult.winnerUsername} won the Tic-Tac-Toe game!`;
-        }
-        return (
-             <div className="flex justify-center my-3">
-                <span className="bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-sm font-semibold px-4 py-2 rounded-full shadow-sm text-center">
-                   <GameIcon className="w-5 h-5 inline-block mr-2" />
-                   {resultText}
-                </span>
-            </div>
-        );
+      let resultText = '';
+      if (msg.gameResult?.result === 'draw') {
+        resultText = "The Tic-Tac-Toe game was a draw.";
+      } else {
+        resultText = `@${msg.gameResult.winnerUsername} won the Tic-Tac-Toe game!`;
+      }
+      return (
+        <div className="flex justify-center my-3">
+          <span className="bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-sm font-semibold px-4 py-2 rounded-full shadow-sm text-center">
+            <GameIcon className="w-5 h-5 inline-block mr-2" />
+            {resultText}
+          </span>
+        </div>
+      );
     }
     return null;
   }
 
   const specialMessage = renderSpecialMessage();
   if (specialMessage) return specialMessage;
-  
+
   if (msg.isDeleted) {
     return (
       <div id={`message-${msg.id}`} className={`flex items-start group chat-message ${isFromViewedUser ? 'justify-end' : 'justify-start'}`}>
         <div className={`max-w-xs md:max-w-md lg:max-w-lg px-2 py-1 rounded-lg shadow-sm relative flex items-center bg-transparent`}>
-           <ProhibitIcon className="w-5 h-5 text-gray-400 dark:text-gray-500 mr-2" />
-           <p className="italic text-gray-500 dark:text-gray-400 pr-16 pb-1">This message was deleted</p>
-           <div className={`absolute bottom-1 right-2 text-xs flex items-center text-gray-500 dark:text-gray-400`}>
-             <span>{new Date(msg.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}</span>
-           </div>
+          <ProhibitIcon className="w-5 h-5 text-gray-400 dark:text-gray-500 mr-2" />
+          <p className="italic text-gray-500 dark:text-gray-400 pr-16 pb-1">This message was deleted</p>
+          <div className={`absolute bottom-1 right-2 text-xs flex items-center text-gray-500 dark:text-gray-400`}>
+            <span>{new Date(msg.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}</span>
+          </div>
         </div>
       </div>
     );
@@ -146,15 +148,14 @@ const AdminMessageBubble: React.FC<{
       className={`flex items-start group chat-message ${isFromViewedUser ? 'justify-end' : 'justify-start'} ${isCurrentSearchResult ? 'highlight-search-result-active' : ''}`}
     >
       <div
-        className={`max-w-xs md:max-w-md lg:max-w-lg px-2 py-1 rounded-lg shadow-sm relative ${
-          isFlagged ? 'ring-2 ring-red-500 bg-red-50 dark:bg-red-900/20' : 
-          isFromViewedUser 
-            ? (messageBubbleColor ? 'text-white' : 'bg-green-100 dark:bg-green-800 text-gray-800 dark:text-gray-100') 
-            : (receivedMessageBubbleColor ? 'text-white' : 'bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100')
-        }`}
+        className={`max-w-xs md:max-w-md lg:max-w-lg px-2 py-1 rounded-lg shadow-sm relative ${isFlagged ? 'ring-2 ring-red-500 bg-red-50 dark:bg-red-900/20' :
+            isFromViewedUser
+              ? (messageBubbleColor ? 'text-white' : 'bg-green-100 dark:bg-green-800 text-gray-800 dark:text-gray-100')
+              : (receivedMessageBubbleColor ? 'text-white' : 'bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100')
+          }`}
         style={
           !isFlagged ? (
-            isFromViewedUser 
+            isFromViewedUser
               ? (messageBubbleColor ? { backgroundColor: messageBubbleColor } : {})
               : (receivedMessageBubbleColor ? { backgroundColor: receivedMessageBubbleColor } : {})
           ) : {}
@@ -177,14 +178,14 @@ const AdminMessageBubble: React.FC<{
         )}
         <div className="flex flex-wrap items-baseline" style={{ wordBreak: 'break-word' }}>
           <p className="mr-2" style={{ whiteSpace: 'pre-wrap' }}>
-             <HighlightedText text={msg.text} highlight={searchQuery || ''} />
+            <HighlightedText text={msg.text} highlight={searchQuery || ''} />
           </p>
           <div className="flex items-center text-xs text-gray-600 dark:text-gray-300 ml-auto self-end shrink-0">
             {msg.editedAt && <span className="mr-1 italic">edited</span>}
             <span className="mr-1">{new Date(msg.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}</span>
           </div>
         </div>
-        
+
         {isFlagged && onAction && (
           <div className="mt-2 pt-2 border-t border-red-200 dark:border-red-800 flex flex-col space-y-2">
             <p className="text-[10px] font-bold text-red-600 dark:text-red-400 uppercase tracking-wider">Reports:</p>
@@ -193,13 +194,13 @@ const AdminMessageBubble: React.FC<{
                 <p className="font-bold">By @{r.reporterUser.username}:</p>
                 <p className="italic">"{r.reason}"</p>
                 <div className="flex justify-end space-x-2 mt-1">
-                  <button 
+                  <button
                     onClick={() => onAction('dismiss', r.id)}
                     className="flex items-center text-green-600 hover:text-green-700 font-bold"
                   >
                     <CheckIcon className="w-3 h-3 mr-1" /> Dismiss
                   </button>
-                  <button 
+                  <button
                     onClick={() => onAction('delete', r.id)}
                     className="flex items-center text-red-600 hover:text-red-700 font-bold"
                   >
@@ -325,65 +326,65 @@ const AdminChatThread: React.FC<AdminChatThreadProps> = ({ adminUser, viewedUser
     // Listen for reports
     const reportsRef = db.ref('reports').orderByChild('chatId').equalTo(chatId);
     const unsubscribeReports = reportsRef.on('value', (snapshot) => {
-        const data = snapshot.val() || {};
-        const reportList: Report[] = Object.keys(data).map(key => ({ ...data[key], id: key }));
-        setReports(reportList);
+      const data = snapshot.val() || {};
+      const reportList: Report[] = Object.keys(data).map(key => ({ ...data[key], id: key }));
+      setReports(reportList);
     });
 
     return () => {
-        messagesRef.off('value', unsubscribe);
-        reportsRef.off('value', unsubscribeReports);
+      messagesRef.off('value', unsubscribe);
+      reportsRef.off('value', unsubscribeReports);
     };
   }, [chatId]);
 
   const handleReportAction = async (action: 'dismiss' | 'delete', reportId?: string) => {
     if (!reportId) return;
-    
+
     const report = reports.find(r => r.id === reportId);
     if (!report) return;
 
     try {
-        if (action === 'dismiss') {
-            await db.ref(`reports/${reportId}`).update({ status: 'dismissed' });
-        } else if (action === 'delete') {
-            if (window.confirm("Are you sure you want to delete this message? This will also mark the report as action taken.")) {
-                const updates: { [key: string]: any } = {};
-                updates[`messages/${chatId}/${report.messageId}/isDeleted`] = true;
-                updates[`messages/${chatId}/${report.messageId}/text`] = "This message was deleted by an admin.";
-                updates[`reports/${reportId}/status`] = 'action_taken';
-                
-                // Also mark other reports for the same message as action taken
-                reports.forEach(r => {
-                    if (r.messageId === report.messageId && r.id !== reportId) {
-                        updates[`reports/${r.id}/status`] = 'action_taken';
-                    }
-                });
+      if (action === 'dismiss') {
+        await db.ref(`reports/${reportId}`).update({ status: 'dismissed' });
+      } else if (action === 'delete') {
+        if (window.confirm("Are you sure you want to delete this message? This will also mark the report as action taken.")) {
+          const updates: { [key: string]: any } = {};
+          updates[`messages/${chatId}/${report.messageId}/isDeleted`] = true;
+          updates[`messages/${chatId}/${report.messageId}/text`] = "This message was deleted by an admin.";
+          updates[`reports/${reportId}/status`] = 'action_taken';
 
-                await db.ref().update(updates);
+          // Also mark other reports for the same message as action taken
+          reports.forEach(r => {
+            if (r.messageId === report.messageId && r.id !== reportId) {
+              updates[`reports/${r.id}/status`] = 'action_taken';
             }
+          });
+
+          await db.ref().update(updates);
         }
+      }
     } catch (error) {
-        console.error("Error handling report action:", error);
-        alert("Failed to perform action. Please try again.");
+      console.error("Error handling report action:", error);
+      alert("Failed to perform action. Please try again.");
     }
   };
 
   useEffect(() => {
     if (!isSearching) {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+      messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
     }
   }, [messages, isSearching]);
 
   const handleScrollToMessage = (messageId: string) => {
     const element = document.getElementById(`message-${messageId}`);
     if (element) {
-        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        if(!isSearching) {
-            element.classList.add('highlight-message');
-            setTimeout(() => {
-                element.classList.remove('highlight-message');
-            }, 2000);
-        }
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (!isSearching) {
+        element.classList.add('highlight-message');
+        setTimeout(() => {
+          element.classList.remove('highlight-message');
+        }, 2000);
+      }
     }
   };
 
@@ -407,7 +408,7 @@ const AdminChatThread: React.FC<AdminChatThreadProps> = ({ adminUser, viewedUser
       setCurrentResultIndex(results.length > 0 ? results.length - 1 : -1);
     }
   };
-  
+
   const handleCloseSearch = () => {
     setIsSearching(false);
     setSearchQuery('');
@@ -434,9 +435,9 @@ const AdminChatThread: React.FC<AdminChatThreadProps> = ({ adminUser, viewedUser
     messages.forEach(msg => {
       const senderUsername = msg.from === viewedUser.uid ? viewedUser.username : chatPartner.username;
       const timestamp = new Date(msg.ts).toLocaleString();
-      
+
       let messageLine = `[${timestamp}] @${senderUsername}: `;
-      
+
       if (msg.isDeleted) {
         messageLine += '(Message deleted)';
       } else {
@@ -445,7 +446,7 @@ const AdminChatThread: React.FC<AdminChatThreadProps> = ({ adminUser, viewedUser
           messageLine += ' (edited)';
         }
       }
-      
+
       chatContent += messageLine + '\n';
     });
 
@@ -459,7 +460,7 @@ const AdminChatThread: React.FC<AdminChatThreadProps> = ({ adminUser, viewedUser
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   };
-  
+
   const captureChat = async () => {
     const chatContainer = adminChatContainerRef.current;
     if (!chatContainer) {
@@ -473,7 +474,7 @@ const AdminChatThread: React.FC<AdminChatThreadProps> = ({ adminUser, viewedUser
 
     try {
       setCaptureStatus('Preparing for capture...');
-      
+
       chatContainer.classList.add('hide-scrollbar-for-capture');
       chatContainer.style.height = 'auto';
       chatContainer.style.overflow = 'visible';
@@ -487,7 +488,7 @@ const AdminChatThread: React.FC<AdminChatThreadProps> = ({ adminUser, viewedUser
           <p class="text-xs text-gray-400 dark:text-gray-300 mt-1">Exported by Admin on ${new Date().toLocaleString()}</p>
       `;
       chatContainer.prepend(exportHeader);
-      
+
       setCaptureStatus('Generating high-quality image...');
       const canvas = await html2canvas(chatContainer, {
         useCORS: true,
@@ -495,19 +496,45 @@ const AdminChatThread: React.FC<AdminChatThreadProps> = ({ adminUser, viewedUser
         backgroundColor: '#000000',
         scale: window.devicePixelRatio,
       });
-      
-      setCaptureStatus('Preparing download...');
-      const link = document.createElement('a');
-      link.download = `sameem-chat-${viewedUser.username}-${chatPartner.username}.png`;
-      link.href = canvas.toDataURL('image/png');
-      link.click();
-      await new Promise(resolve => setTimeout(resolve, 100));
+
+      setCaptureStatus('Saving image...');
+      const dataUrl = canvas.toDataURL('image/png');
+      const fileName = `sameem-chat-${viewedUser.username}-${chatPartner.username}.png`;
+
+      if (Capacitor.isNativePlatform()) {
+        try {
+          const base64Data = dataUrl.split(',')[1];
+          await Filesystem.writeFile({
+            path: `admin/${fileName}`,
+            data: base64Data,
+            directory: Directory.Documents,
+            recursive: true
+          });
+          alert('The image saved in admin folder.');
+        } catch (err) {
+          console.error("Failed to save image locally:", err);
+          // Fallback just in case
+          const link = document.createElement('a');
+          link.download = fileName;
+          link.href = dataUrl;
+          link.click();
+          await new Promise(resolve => setTimeout(resolve, 100));
+          alert('The image saved in folder.');
+        }
+      } else {
+        const link = document.createElement('a');
+        link.download = fileName;
+        link.href = dataUrl;
+        link.click();
+        await new Promise(resolve => setTimeout(resolve, 100));
+        alert('The image saved in folder.');
+      }
 
       exportHeader.remove();
       chatContainer.style.height = originalHeight;
       chatContainer.style.overflow = originalOverflow;
       chatContainer.classList.remove('hide-scrollbar-for-capture');
-      
+
     } catch (error) {
       console.error("Failed to capture chat:", error);
       alert("Sorry, something went wrong while capturing the chat.");
@@ -517,14 +544,14 @@ const AdminChatThread: React.FC<AdminChatThreadProps> = ({ adminUser, viewedUser
       setFilteredMessagesForCapture(null);
     }
   };
-  
+
   useEffect(() => {
     if (filteredMessagesForCapture) {
-        // Use a timeout to ensure the DOM has re-rendered with the filtered messages
-        const timer = setTimeout(() => {
-            captureChat();
-        }, 100);
-        return () => clearTimeout(timer);
+      // Use a timeout to ensure the DOM has re-rendered with the filtered messages
+      const timer = setTimeout(() => {
+        captureChat();
+      }, 100);
+      return () => clearTimeout(timer);
     }
   }, [filteredMessagesForCapture]);
 
@@ -537,15 +564,15 @@ const AdminChatThread: React.FC<AdminChatThreadProps> = ({ adminUser, viewedUser
     end.setHours(23, 59, 59, 999); // End of the selected day
 
     const filtered = messages.filter(msg => msg.ts >= start.getTime() && msg.ts <= end.getTime());
-    
+
     if (filtered.length === 0) {
-        alert("No messages found in the selected date range.");
-        return;
+      alert("No messages found in the selected date range.");
+      return;
     }
-    
+
     setFilteredMessagesForCapture(filtered);
   };
-  
+
   let messagesToDisplay = filteredMessagesForCapture || messages;
   if (searchQuery) {
     messagesToDisplay = searchResults;
@@ -570,9 +597,9 @@ const AdminChatThread: React.FC<AdminChatThreadProps> = ({ adminUser, viewedUser
                 {currentResultIndex + 1} / {searchResults.length}
               </span>
             ) : searchQuery ? (
-                 <span className="text-sm text-gray-500 dark:text-gray-400 mx-2 shrink-0">
-                    No results
-                </span>
+              <span className="text-sm text-gray-500 dark:text-gray-400 mx-2 shrink-0">
+                No results
+              </span>
             ) : null}
             <button onClick={navigateToPreviousResult} disabled={currentResultIndex <= 0} className="p-2 text-gray-600 dark:text-gray-400 disabled:opacity-30" aria-label="Previous result">
               <ArrowUpIcon className="w-6 h-6" />
@@ -606,7 +633,7 @@ const AdminChatThread: React.FC<AdminChatThreadProps> = ({ adminUser, viewedUser
           </>
         )}
       </header>
-      
+
       <main ref={adminChatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-2">
         {isLoading ? (
           <div className="text-center p-4 text-gray-500 dark:text-gray-400">Loading messages...</div>
@@ -619,22 +646,22 @@ const AdminChatThread: React.FC<AdminChatThreadProps> = ({ adminUser, viewedUser
 
             const showDateSeparator = !searchQuery && (index === 0 || !isSameDay(new Date(messagesSource[index - 1].ts), new Date(msg.ts)));
             return (
-                <React.Fragment key={msg.id}>
-                    {showDateSeparator && <DateSeparator date={new Date(msg.ts)} />}
-                    <AdminMessageBubble
-                        msg={msg}
-                        isFromViewedUser={msg.from === viewedUser.uid}
-                        onScrollToMessage={handleScrollToMessage}
-                        viewedUser={viewedUser}
-                        chatPartner={chatPartner}
-                        searchQuery={searchQuery}
-                        isCurrentSearchResult={isCurrentSearchResult}
-                        reports={reports}
-                        onAction={handleReportAction}
-                        messageBubbleColor={messageBubbleColor}
-                        receivedMessageBubbleColor={receivedMessageBubbleColor}
-                    />
-                </React.Fragment>
+              <React.Fragment key={msg.id}>
+                {showDateSeparator && <DateSeparator date={new Date(msg.ts)} />}
+                <AdminMessageBubble
+                  msg={msg}
+                  isFromViewedUser={msg.from === viewedUser.uid}
+                  onScrollToMessage={handleScrollToMessage}
+                  viewedUser={viewedUser}
+                  chatPartner={chatPartner}
+                  searchQuery={searchQuery}
+                  isCurrentSearchResult={isCurrentSearchResult}
+                  reports={reports}
+                  onAction={handleReportAction}
+                  messageBubbleColor={messageBubbleColor}
+                  receivedMessageBubbleColor={receivedMessageBubbleColor}
+                />
+              </React.Fragment>
             )
           })
         )}
@@ -652,115 +679,115 @@ const AdminChatThread: React.FC<AdminChatThreadProps> = ({ adminUser, viewedUser
   );
 };
 
-const Modal: React.FC<React.PropsWithChildren<{title: string, onClose: () => void}>> = ({ title, onClose, children }) => {
-    const modalRef = useRef<HTMLDivElement>(null);
+const Modal: React.FC<React.PropsWithChildren<{ title: string, onClose: () => void }>> = ({ title, onClose, children }) => {
+  const modalRef = useRef<HTMLDivElement>(null);
 
-    useEffect(() => {
-        const handleKeyDown = (event: KeyboardEvent) => {
-            if (event.key === 'Escape') {
-                onClose();
-            }
-        };
-        document.addEventListener('keydown', handleKeyDown);
-        return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [onClose]);
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
 
-    useEffect(() => {
-        const modalNode = modalRef.current;
-        if (!modalNode) return;
+  useEffect(() => {
+    const modalNode = modalRef.current;
+    if (!modalNode) return;
 
-        const focusableElements = modalNode.querySelectorAll<HTMLElement>(
-            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-        );
-        const firstElement = focusableElements[0];
-        const lastElement = focusableElements[focusableElements.length - 1];
-
-        const handleTabKeyPress = (event: KeyboardEvent) => {
-            if (event.key === 'Tab') {
-                if (event.shiftKey) { // Shift+Tab
-                    if (document.activeElement === firstElement) {
-                        lastElement.focus();
-                        event.preventDefault();
-                    }
-                } else { // Tab
-                    if (document.activeElement === lastElement) {
-                        firstElement.focus();
-                        event.preventDefault();
-                    }
-                }
-            }
-        };
-        
-        if (firstElement) {
-            firstElement.focus();
-        }
-        modalNode.addEventListener('keydown', handleTabKeyPress);
-        return () => modalNode.removeEventListener('keydown', handleTabKeyPress);
-    }, []);
-    
-    return (
-        <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 animation-fade-in" role="dialog" aria-modal="true" aria-labelledby="modal-title">
-            <div ref={modalRef} className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-sm animation-scale-in">
-                <div className="flex justify-between items-center mb-4">
-                    <h2 id="modal-title" className="text-xl font-bold text-gray-800 dark:text-gray-100">{title}</h2>
-                    <button onClick={onClose} aria-label="Close" className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-2xl font-bold">&times;</button>
-                </div>
-                {children}
-            </div>
-        </div>
+    const focusableElements = modalNode.querySelectorAll<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
     );
+    const firstElement = focusableElements[0];
+    const lastElement = focusableElements[focusableElements.length - 1];
+
+    const handleTabKeyPress = (event: KeyboardEvent) => {
+      if (event.key === 'Tab') {
+        if (event.shiftKey) { // Shift+Tab
+          if (document.activeElement === firstElement) {
+            lastElement.focus();
+            event.preventDefault();
+          }
+        } else { // Tab
+          if (document.activeElement === lastElement) {
+            firstElement.focus();
+            event.preventDefault();
+          }
+        }
+      }
+    };
+
+    if (firstElement) {
+      firstElement.focus();
+    }
+    modalNode.addEventListener('keydown', handleTabKeyPress);
+    return () => modalNode.removeEventListener('keydown', handleTabKeyPress);
+  }, []);
+
+  return (
+    <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 animation-fade-in" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div ref={modalRef} className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-sm animation-scale-in">
+        <div className="flex justify-between items-center mb-4">
+          <h2 id="modal-title" className="text-xl font-bold text-gray-800 dark:text-gray-100">{title}</h2>
+          <button onClick={onClose} aria-label="Close" className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-2xl font-bold">&times;</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
 };
 
 const DateRangeModal: React.FC<{ onClose: () => void; onCapture: (start: string, end: string) => void; }> = ({ onClose, onCapture }) => {
-    const today = new Date().toISOString().split('T')[0];
-    const [startDate, setStartDate] = useState(today);
-    const [endDate, setEndDate] = useState(today);
-    const [error, setError] = useState('');
+  const today = new Date().toISOString().split('T')[0];
+  const [startDate, setStartDate] = useState(today);
+  const [endDate, setEndDate] = useState(today);
+  const [error, setError] = useState('');
 
-    const handleCapture = () => {
-        if (!startDate || !endDate) {
-            setError('Please select both a start and end date.');
-            return;
-        }
-        if (new Date(startDate) > new Date(endDate)) {
-            setError('Start date cannot be after the end date.');
-            return;
-        }
-        setError('');
-        onCapture(startDate, endDate);
-    };
-    
-    return (
-        <Modal title="Select Date Range" onClose={onClose}>
-            <div className="space-y-4">
-                <div>
-                    <label htmlFor="startDate" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Start Date</label>
-                    <input
-                        type="date"
-                        id="startDate"
-                        value={startDate}
-                        onChange={(e) => setStartDate(e.target.value)}
-                        className="mt-1 block w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
-                    />
-                </div>
-                <div>
-                    <label htmlFor="endDate" className="block text-sm font-medium text-gray-700 dark:text-gray-300">End Date</label>
-                    <input
-                        type="date"
-                        id="endDate"
-                        value={endDate}
-                        onChange={(e) => setEndDate(e.target.value)}
-                        className="mt-1 block w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
-                    />
-                </div>
-            </div>
-            {error && <p role="alert" className="text-red-500 text-sm mt-2 text-center">{error}</p>}
-            <div className="mt-6 flex justify-end space-x-2">
-                <button onClick={onClose} className="px-4 py-2 text-green-600 dark:text-green-400 rounded hover:bg-gray-100 dark:hover:bg-gray-700 font-semibold">Cancel</button>
-                <button onClick={handleCapture} className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 font-semibold">Capture</button>
-            </div>
-        </Modal>
-    );
+  const handleCapture = () => {
+    if (!startDate || !endDate) {
+      setError('Please select both a start and end date.');
+      return;
+    }
+    if (new Date(startDate) > new Date(endDate)) {
+      setError('Start date cannot be after the end date.');
+      return;
+    }
+    setError('');
+    onCapture(startDate, endDate);
+  };
+
+  return (
+    <Modal title="Select Date Range" onClose={onClose}>
+      <div className="space-y-4">
+        <div>
+          <label htmlFor="startDate" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Start Date</label>
+          <input
+            type="date"
+            id="startDate"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="mt-1 block w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
+          />
+        </div>
+        <div>
+          <label htmlFor="endDate" className="block text-sm font-medium text-gray-700 dark:text-gray-300">End Date</label>
+          <input
+            type="date"
+            id="endDate"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            className="mt-1 block w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
+          />
+        </div>
+      </div>
+      {error && <p role="alert" className="text-red-500 text-sm mt-2 text-center">{error}</p>}
+      <div className="mt-6 flex justify-end space-x-2">
+        <button onClick={onClose} className="px-4 py-2 text-green-600 dark:text-green-400 rounded hover:bg-gray-100 dark:hover:bg-gray-700 font-semibold">Cancel</button>
+        <button onClick={handleCapture} className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 font-semibold">Capture</button>
+      </div>
+    </Modal>
+  );
 };
 
 

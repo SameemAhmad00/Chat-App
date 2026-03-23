@@ -10,13 +10,22 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@capacitor/android": "^8.1.0",
+    "@capacitor/app": "^8.0.1",
+    "@capacitor/core": "^8.1.0",
+    "@capacitor/filesystem": "^8.1.2",
     "@firebase/auth": "^1.12.0",
+    "clsx": "^2.1.1",
     "firebase": "^12.7.0",
     "framer-motion": "^12.34.3",
+    "lucide-react": "^0.577.0",
     "react": "^19.2.3",
-    "react-dom": "^19.2.3"
+    "react-dom": "^19.2.3",
+    "react-router-dom": "^7.13.1",
+    "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.1.0",
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
     "typescript": "~5.8.2",

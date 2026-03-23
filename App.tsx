@@ -16,6 +16,7 @@ import AdminUserDetail from './components/AdminUserDetail';
 
 import { endCall, startOutgoingCall, acceptIncomingCall } from './services/webrtc';
 import { setupNotifications } from './services/notifications';
+import { App as CapacitorApp } from '@capacitor/app';
 
 export type NavigationState =
   | { view: 'auth' }
@@ -42,7 +43,7 @@ const App: React.FC = () => {
   // FIX: Use User type from firebase compat library.
   const [user, setUser] = useState<firebase.User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  
+
   const [navigationStack, setNavigationStack] = useState<NavigationState[]>([{ view: 'auth' }]);
 
   // WebRTC State
@@ -51,9 +52,13 @@ const App: React.FC = () => {
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const callListenersRef = useRef<(() => void)[]>([]);
-  
+
   // PWA Install Prompt State
   const [installPrompt, setInstallPrompt] = useState<any>(null);
+
+  // App Exit Status
+  const [showExitToast, setShowExitToast] = useState(false);
+  const lastBackPressRef = useRef<number>(0);
 
   const pushView = (state: NavigationState) => {
     setNavigationStack(stack => [...stack, state]);
@@ -62,87 +67,110 @@ const App: React.FC = () => {
   const popView = () => {
     setNavigationStack(stack => (stack.length > 1 ? stack.slice(0, -1) : stack));
   };
-  
+
   const resetToView = (state: NavigationState) => {
-      setNavigationStack([state]);
+    setNavigationStack([state]);
   };
-  
+
   const currentNavigationState = navigationStack[navigationStack.length - 1];
   const activeCall = currentNavigationState.view === 'call' ? currentNavigationState.activeCall : null;
 
 
   const cleanupWebRTC = useCallback(() => {
     endCall(peerConnectionRef, localStream, activeCall, user, db);
-    
+
     callListenersRef.current.forEach(unsubscribe => unsubscribe());
     callListenersRef.current = [];
 
     setLocalStream(null);
     setRemoteStream(null);
   }, [localStream, activeCall, user, db]);
-  
+
   // Handle browser back button
   useEffect(() => {
-      const handlePopState = (event: PopStateEvent) => {
-          // If we have state in the history, it means we navigated to a sub-view.
-          // If the user clicks back, we should pop the view.
-          if (navigationStack.length > 1) {
-              popView();
-          }
-      };
-      
-      window.addEventListener('popstate', handlePopState);
-      
-      return () => {
-          window.removeEventListener('popstate', handlePopState);
-      };
+    const handlePopState = (event: PopStateEvent) => {
+      if (navigationStack.length > 1) {
+        popView();
+      }
+    };
+
+    const handleHardwareBack = () => {
+      if (navigationStack.length > 1) {
+        popView();
+        window.history.back(); // keep web history in sync
+      } else {
+        const currentTime = new Date().getTime();
+        if (currentTime - lastBackPressRef.current < 2000) {
+          CapacitorApp.exitApp();
+        } else {
+          setShowExitToast(true);
+          lastBackPressRef.current = currentTime;
+          setTimeout(() => setShowExitToast(false), 2000);
+        }
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    const backListener = CapacitorApp.addListener('backButton', handleHardwareBack);
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      backListener.then(listener => listener.remove());
+    };
   }, [navigationStack.length]);
 
   // Push state to history when navigation stack grows
   useEffect(() => {
-      if (navigationStack.length > 1) {
-          // Only push if the current state is not already at the top of the history
-          // This is a simple heuristic for this stack-based navigation
-          window.history.pushState({ stackLength: navigationStack.length }, '');
-      }
+    if (navigationStack.length > 1) {
+      // Only push if the current state is not already at the top of the history
+      // This is a simple heuristic for this stack-based navigation
+      window.history.pushState({ stackLength: navigationStack.length }, '');
+    }
   }, [navigationStack.length]);
 
 
   useEffect(() => {
+    let unsubscribeProfile: (() => void) | null = null;
+
     // FIX: Use compat version of onAuthStateChanged.
     const unsubscribe = auth.onAuthStateChanged(async (user) => {
+      if (unsubscribeProfile) {
+        unsubscribeProfile();
+        unsubscribeProfile = null;
+      }
+
       if (user) {
         // FIX: Use compat version of ref.
         const profileRef = db.ref(`users/${user.uid}`);
-        const unsubscribeProfile = (snapshot: firebase.database.DataSnapshot) => {
+        const profileListener = (snapshot: firebase.database.DataSnapshot) => {
           if (snapshot.exists()) {
             const userProfile = snapshot.val() as UserProfile;
-            
+
             if (userProfile.isBlockedByAdmin) {
-                auth.signOut();
-                return;
+              auth.signOut();
+              return;
             }
-            
+
             setUser(user);
             setProfile(userProfile);
-            
+
             setNavigationStack(stack => {
-                if (stack[stack.length - 1].view === 'auth') {
-                    return [{ view: 'main' }];
-                }
-                return stack;
+              if (stack[stack.length - 1].view === 'auth') {
+                return [{ view: 'main' }];
+              }
+              return stack;
             });
 
           } else {
-             setUser(user);
-             setProfile(null);
-             setNavigationStack([{ view: 'auth' }]);
+            setUser(user);
+            setProfile(null);
+            setNavigationStack([{ view: 'auth' }]);
           }
           setIsLoading(false);
         };
         // FIX: Use compat version of onValue.
-        profileRef.on('value', unsubscribeProfile);
-        return () => profileRef.off('value', unsubscribeProfile);
+        profileRef.on('value', profileListener);
+        unsubscribeProfile = () => profileRef.off('value', profileListener);
       } else {
         setUser(null);
         setProfile(null);
@@ -150,7 +178,12 @@ const App: React.FC = () => {
         setIsLoading(false);
       }
     });
-    return () => unsubscribe();
+    return () => {
+      if (unsubscribeProfile) {
+        unsubscribeProfile();
+      }
+      unsubscribe();
+    };
   }, []);
 
   // Manage user presence
@@ -173,15 +206,15 @@ const App: React.FC = () => {
     });
 
     return () => {
-        // Mark user as offline when they log out or the component unmounts
-        // FIX: Use compat version of set and serverTimestamp.
-        userPresenceRef.set(firebase.database.ServerValue.TIMESTAMP);
-        db.ref(`users/${user.uid}`).update({ lastActive: firebase.database.ServerValue.TIMESTAMP });
-        // FIX: Use compat version of off.
-        connectedRef.off('value', listener);
+      // Mark user as offline when they log out or the component unmounts
+      // FIX: Use compat version of set and serverTimestamp.
+      userPresenceRef.set(firebase.database.ServerValue.TIMESTAMP);
+      db.ref(`users/${user.uid}`).update({ lastActive: firebase.database.ServerValue.TIMESTAMP });
+      // FIX: Use compat version of off.
+      connectedRef.off('value', listener);
     };
   }, [user]);
-  
+
   // Setup push notifications
   useEffect(() => {
     // Check if the user is logged in and notifications are supported by the browser
@@ -189,7 +222,7 @@ const App: React.FC = () => {
       setupNotifications(profile.uid);
     }
   }, [profile]);
-  
+
   // Listen for PWA install prompt
   useEffect(() => {
     const handleBeforeInstallPrompt = (e: Event) => {
@@ -212,7 +245,7 @@ const App: React.FC = () => {
     if (!user || !profile) return;
     // FIX: Use compat version of ref.
     const callsRef = db.ref(`calls/${user.uid}`);
-    
+
     // FIX: Use compat version of onValue.
     const listener = callsRef.on('value', (snapshot) => {
       const calls = snapshot.val();
@@ -237,11 +270,11 @@ const App: React.FC = () => {
 
   const handleStartCall = async (partner: Contact, type: 'video' | 'voice') => {
     if (!user || !profile) return;
-    
+
     const { activeCall: newActiveCall, unsubscribers } = await startOutgoingCall(user, profile, partner, type, db, peerConnectionRef, setLocalStream, setRemoteStream, cleanupWebRTC);
     if (newActiveCall && unsubscribers) {
-        pushView({ view: 'call', activeCall: newActiveCall });
-        callListenersRef.current = unsubscribers;
+      pushView({ view: 'call', activeCall: newActiveCall });
+      callListenersRef.current = unsubscribers;
     }
   };
 
@@ -250,8 +283,8 @@ const App: React.FC = () => {
     setIncomingCall(null);
     const { activeCall: newActiveCall, unsubscribers } = await acceptIncomingCall(user, profile, incomingCall, db, peerConnectionRef, setLocalStream, setRemoteStream, cleanupWebRTC);
     if (newActiveCall && unsubscribers) {
-        pushView({ view: 'call', activeCall: newActiveCall });
-        callListenersRef.current = unsubscribers;
+      pushView({ view: 'call', activeCall: newActiveCall });
+      callListenersRef.current = unsubscribers;
     }
   };
 
@@ -265,23 +298,23 @@ const App: React.FC = () => {
 
   const handleEndCall = (duration: number) => {
     if (user && activeCall && duration > 0) {
-        // Find the call log and update it with the duration
-        const callLogsRef = db.ref(`callLogs/${user.uid}`);
-        callLogsRef.orderByChild('ts').limitToLast(5).once('value', (snapshot) => {
-            const logs = snapshot.val();
-            if (logs) {
-                // Find the most recent log with this partner that has no duration yet.
-                const logEntries = Object.entries(logs) as [string, CallRecord][];
-                const callLogToUpdate = logEntries
-                    .sort(([, a], [, b]) => b.ts - a.ts)
-                    .find(([, log]) => log.partner.uid === activeCall.partner.uid && log.duration === undefined);
-                
-                if (callLogToUpdate) {
-                    const [logId] = callLogToUpdate;
-                    db.ref(`callLogs/${user.uid}/${logId}`).update({ duration });
-                }
-            }
-        });
+      // Find the call log and update it with the duration
+      const callLogsRef = db.ref(`callLogs/${user.uid}`);
+      callLogsRef.orderByChild('ts').limitToLast(5).once('value', (snapshot) => {
+        const logs = snapshot.val();
+        if (logs) {
+          // Find the most recent log with this partner that has no duration yet.
+          const logEntries = Object.entries(logs) as [string, CallRecord][];
+          const callLogToUpdate = logEntries
+            .sort(([, a], [, b]) => b.ts - a.ts)
+            .find(([, log]) => log.partner.uid === activeCall.partner.uid && log.duration === undefined);
+
+          if (callLogToUpdate) {
+            const [logId] = callLogToUpdate;
+            db.ref(`callLogs/${user.uid}/${logId}`).update({ duration });
+          }
+        }
+      });
     }
     cleanupWebRTC();
     resetToView({ view: 'main' });
@@ -291,7 +324,7 @@ const App: React.FC = () => {
     setProfile(newProfile);
     resetToView({ view: 'main' });
   }
-  
+
   const handleInstallClick = () => {
     if (!installPrompt) {
       return;
@@ -312,7 +345,7 @@ const App: React.FC = () => {
     switch (currentNavigationState.view) {
       case 'auth':
         return <AuthScreen onProfileSetupComplete={handleProfileSetupComplete} user={user} />;
-      
+
       case 'main':
         if (user && profile) {
           return (
@@ -364,26 +397,26 @@ const App: React.FC = () => {
           return <SettingsScreen user={user} profile={profile} onBack={popView} />;
         }
         return null;
-        
+
       case 'admin':
         if (profile) {
-            return <AdminScreen currentUserProfile={profile} onBack={popView} onNavigate={(state) => pushView(state)} />;
+          return <AdminScreen currentUserProfile={profile} onBack={popView} onNavigate={(state) => pushView(state)} />;
         }
         return null;
 
       case 'adminChatViewer':
         if (user && profile) {
-            return <AdminChatViewer adminUser={profile} viewedUser={currentNavigationState.viewedUser} onBack={popView} />;
+          return <AdminChatViewer adminUser={profile} viewedUser={currentNavigationState.viewedUser} onBack={popView} />;
         }
         return null;
 
       case 'adminUserDetail':
         if (profile) {
-            return <AdminUserDetail currentUserProfile={profile} viewedUser={currentNavigationState.viewedUser} onBack={popView} onNavigate={pushView} />;
+          return <AdminUserDetail currentUserProfile={profile} viewedUser={currentNavigationState.viewedUser} onBack={popView} onNavigate={pushView} />;
         }
         return null;
 
-      
+
 
 
 
@@ -397,6 +430,11 @@ const App: React.FC = () => {
       <div className="bg-gray-100 dark:bg-black w-full h-full max-w-md max-h-[950px] shadow-2xl rounded-lg overflow-hidden flex flex-col relative">
         {renderContent()}
       </div>
+      {showExitToast && (
+        <div className="fixed bottom-12 left-1/2 -translate-x-1/2 z-50 bg-gray-800 text-white px-4 py-2 rounded-full shadow-lg text-sm font-medium pointer-events-none transition-opacity duration-300">
+          Press back again to exit
+        </div>
+      )}
     </div>
   );
 };

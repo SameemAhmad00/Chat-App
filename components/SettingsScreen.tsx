@@ -4,9 +4,10 @@ import React, { useState, useEffect } from 'react';
 import firebase from 'firebase/compat/app';
 import { db } from '../services/firebase';
 import type { UserProfile } from '../types';
-import { BackIcon } from './Icons';
+import { BackIcon, LockIcon } from './Icons';
 import { useTheme } from '../contexts/ThemeContext';
 import ColorPicker from './ColorPicker';
+import { Modal } from './shared/Modals';
 
 // --- Components ---
 
@@ -19,6 +20,7 @@ interface SettingsScreenProps {
 
 const SettingsScreen: React.FC<SettingsScreenProps> = ({ user, profile, onBack }) => {
   const { theme, toggleTheme } = useTheme();
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
   const [localAppearance, setLocalAppearance] = useState({
     messageBubbleColor: profile.settings?.appearance?.messageBubbleColor || '#22c55e',
     receivedMessageBubbleColor: profile.settings?.appearance?.receivedMessageBubbleColor || '',
@@ -99,6 +101,25 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ user, profile, onBack }
       </header>
 
       <main className="flex-1 overflow-y-auto p-4 text-gray-800 dark:text-gray-200 space-y-4">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+          <h3 className="font-bold text-lg mb-4 text-green-600 dark:text-green-400">Account</h3>
+          <ul className="divide-y divide-gray-200 dark:divide-gray-700">
+            <li className="flex justify-between items-center py-4">
+              <div>
+                <p className="font-semibold">Password</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Change your account password.</p>
+              </div>
+              <button 
+                onClick={() => setIsPasswordModalOpen(true)}
+                className="px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 text-sm font-semibold rounded-lg transition-colors flex items-center"
+              >
+                <LockIcon className="w-4 h-4 mr-2" />
+                Change
+              </button>
+            </li>
+          </ul>
+        </div>
+
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
           <h3 className="font-bold text-lg mb-4 text-green-600 dark:text-green-400">Notifications</h3>
           <ul className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -211,6 +232,10 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ user, profile, onBack }
           )}
         </div>
       </main>
+
+      {isPasswordModalOpen && (
+        <ChangePasswordModal user={user} onClose={() => setIsPasswordModalOpen(false)} />
+      )}
     </div>
   );
 };
@@ -260,6 +285,101 @@ const ToggleSwitch: React.FC<ToggleSwitchProps> = ({ isOn, onToggle, disabled = 
         }`}
       />
     </button>
+  );
+};
+
+const ChangePasswordModal: React.FC<{ user: firebase.User; onClose: () => void }> = ({ user, onClose }) => {
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword !== confirmPassword) {
+      setError("New passwords don't match.");
+      return;
+    }
+    if (newPassword.length < 6) {
+      setError("Password must be at least 6 characters.");
+      return;
+    }
+    if (!user.email) {
+      setError("User email not found.");
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    try {
+      const credential = firebase.auth.EmailAuthProvider.credential(user.email, currentPassword);
+      await user.reauthenticateWithCredential(credential);
+      await user.updatePassword(newPassword);
+      setSuccess(true);
+      setTimeout(onClose, 2000);
+    } catch (err: any) {
+      setError(err.message.replace('Firebase: ', ''));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (success) {
+    return (
+      <Modal title="Change Password" onClose={onClose}>
+        <div className="text-center p-4">
+          <div className="text-green-500 text-4xl mb-4">✓</div>
+          <p className="text-gray-800 dark:text-gray-200 font-semibold">Password changed successfully!</p>
+        </div>
+      </Modal>
+    );
+  }
+
+  return (
+    <Modal title="Change Password" onClose={onClose}>
+      <form onSubmit={handleChangePassword} className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Current Password</label>
+          <input
+            type="password"
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)}
+            className="mt-1 block w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
+            required
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">New Password</label>
+          <input
+            type="password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            className="mt-1 block w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
+            required
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Confirm New Password</label>
+          <input
+            type="password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            className="mt-1 block w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
+            required
+          />
+        </div>
+        {error && <p className="text-red-500 text-sm text-center">{error}</p>}
+        <div className="mt-6 flex justify-end space-x-2">
+          <button type="button" onClick={onClose} className="px-4 py-2 text-green-600 dark:text-green-400 rounded hover:bg-gray-100 dark:hover:bg-gray-700 font-semibold">Cancel</button>
+          <button type="submit" disabled={loading} className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 font-semibold disabled:opacity-50">
+            {loading ? 'Updating...' : 'Update Password'}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 };
 
